@@ -1,0 +1,41 @@
+merchant_id,nombre,categoria
+MER-0001,Supermercado Sol,ALIMENTACION
+MER-0002,Frutería La Huerta,ALIMENTACION
+MER-0003,Panadería Trigo,ALIMENTACION
+MER-0004,Mercado Central Puesto 12,ALIMENTACION
+MER-0005,Ultramarinos Pepa,ALIMENTACION
+MER-0006,Bar El Rincón,RESTAURACION
+MER-0007,Restaurante Mar Azul,RESTAURACION
+MER-0008,Cafetería Plaza,RESTAURACION
+MER-0009,Pizzería Vesubio,RESTAURACION
+MER-0010,Taberna Los Arcos,RESTAURACION
+MER-0011,Gasolinera Ruta 6,TRANSPORTE
+MER-0012,Radio Taxi Centro,TRANSPORTE
+MER-0013,Parking Centro,TRANSPORTE
+MER-0014,Bus Interurbano Norte,TRANSPORTE
+MER-0015,Alquiler Bici Urbana,TRANSPORTE
+MER-0016,Cines Estrella,OCIO
+MER-0017,Bolera Norte,OCIO
+MER-0018,Teatro del Puerto,OCIO
+MER-0019,Librería Páginas,OCIO
+MER-0020,Escape Room Enigma,OCIO
+MER-0021,TecnoHogar,ELECTRONICA
+MER-0022,Informática Byte,ELECTRONICA
+MER-0023,Móviles Express,ELECTRONICA
+MER-0024,Electro Barrio,ELECTRONICA
+MER-0025,Zona Juegos,ELECTRONICA
+MER-0026,Moda Alba,MODA
+MER-0027,Zapatería Paso,MODA
+MER-0028,Boutique Lino,MODA
+MER-0029,Deportes Meta,MODA
+MER-0030,Complementos Iris,MODA
+MER-0031,Viajes Horizonte,VIAJES
+MER-0032,Hotel Brisa,VIAJES
+MER-0033,Aerolínea Cielo,VIAJES
+MER-0034,Alquiler Coches Ruta,VIAJES
+MER-0035,Hostal Camino,VIAJES
+MER-0036,Farmacia Central,SALUD
+MER-0037,Óptica Visión,SALUD
+MER-0038,Clínica Dental Sonríe,SALUD
+MER-0039,Fisioterapia Movimiento,SALUD
+MER-0040,Parafarmacia Salud,SALUD

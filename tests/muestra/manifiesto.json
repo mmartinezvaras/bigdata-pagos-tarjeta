@@ -1,0 +1,64 @@
+{
+  "parametros": {
+    "seed": 42,
+    "n_events": 24,
+    "n_cards": 6,
+    "start": "2026-10-26",
+    "days": 2,
+    "anomaly_rate": 0.21,
+    "dup_rate": 0.125,
+    "n_suspicious": 1
+  },
+  "n_pagos_distintos": 24,
+  "n_mensajes": 27,
+  "n_duplicados": 3,
+  "anomalias_por_regla": {
+    "R2_IMPORTE": 1,
+    "R3_COMERCIO": 1,
+    "R4_FECHA": 1,
+    "R1_CAMPOS": 1,
+    "R5_DOMINIOS": 1
+  },
+  "anomalias": [
+    {
+      "tx_id": "TX-3fa71bf90e27",
+      "tipo": "IMPORTE_NO_POSITIVO",
+      "regla": "R2_IMPORTE"
+    },
+    {
+      "tx_id": "TX-8ce2db20a56e",
+      "tipo": "COMERCIO_INEXISTENTE",
+      "regla": "R3_COMERCIO"
+    },
+    {
+      "tx_id": "TX-e0599132b63e",
+      "tipo": "FECHA_FUTURA",
+      "regla": "R4_FECHA"
+    },
+    {
+      "tx_id": "TX-deda1b3dbd5c",
+      "tipo": "CAMPO_VACIO",
+      "regla": "R1_CAMPOS"
+    },
+    {
+      "tx_id": "TX-ae841d53434b",
+      "tipo": "DOMINIO_INVALIDO",
+      "regla": "R5_DOMINIOS"
+    }
+  ],
+  "duplicados_tx_id": [
+    "TX-fd51451b4cf3",
+    "TX-474a3ceddf2d",
+    "TX-43ff3d1a85dd"
+  ],
+  "tarjetas_sospechosas": [
+    {
+      "card_id": "CARD-000002",
+      "fecha_local": "2026-10-27",
+      "paises": [
+        "ES",
+        "GB"
+      ]
+    }
+  ]
+}

@@ -30,12 +30,14 @@ preguntar.
   horarias y P3 es una consulta más interesante (agrupar por tarjeta y día y contar países
   distintos). Juntas cubren los tres usuarios del sistema.
 - **Detalle de unidades:** solo cuentan los pagos `APROBADO` en P1 (un pago denegado no es
-  gasto). P2 cuenta todos los intentos.
+  gasto). P2 y P3 cuentan todos los intentos válidos: para fraude, un intento denegado en
+  otro país ya es una señal.
 - **Cómo lo cuento:** *"Una pregunta por cada tipo de usuario: negocio, operaciones y fraude."*
 
 ## D3 · Las horas siempre en UTC
 
-- **Qué:** `event_ts` se guarda en UTC. Solo se convierte a hora de Madrid en la consulta P2.
+- **Qué:** `event_ts` se guarda en UTC. Para el negocio (el "día" de P1 y P3 y la "hora" de
+  P2) se convierte a hora de Madrid en las consultas.
 - **Por qué:** UTC no tiene cambios de horario (verano/invierno) ni ambigüedades. Si guardara
   hora local, el día del cambio de hora habría horas repetidas o inexistentes.
 - **Cómo lo cuento:** *"Guardo en UTC y convierto al presentar, como se hace en cualquier
@@ -93,6 +95,37 @@ preguntar.
   `hdfs` (escribe en HDFS por WebHDFS, la API HTTP del NameNode).
 - **Cómo lo cuento:** *"El código vive en la misma red que los servicios; el Mac solo edita
   ficheros."*
+
+## D9 · El simulador escribe un fichero; no publica en Kafka
+
+- **Qué:** `simulator/simulador.py` genera los pagos en JSON Lines (un JSON por línea). El
+  productor, aparte, lee ese fichero y lo publica.
+- **Por qué:** así los mismos eventos sirven como muestra de referencia y como entrada del
+  sistema, y puedo calcular el resultado esperado sin depender de Kafka. Además, cada pieza
+  hace una sola cosa y se prueba por separado.
+- **Cómo lo cuento:** *"Separé generar datos de transportarlos: el mismo fichero lo uso para
+  saber qué debe salir y para alimentar Kafka."*
+
+## D10 · Verdad conocida: semilla, manifiesto y oráculo
+
+- **Qué:** el simulador es reproducible (`--seed`) y guarda un manifiesto con todo lo que
+  inyectó. `tests/calcular_esperado.py` calcula P1-P3 en Python puro, aplicando el contrato
+  sin Kafka, HDFS ni Hive. `tests/test_simulador.py` comprueba que ese cálculo encuentra
+  exactamente lo inyectado.
+- **Por qué:** para decir que Hive "está bien" necesito saber de antemano qué debe dar. Si
+  Hive y el cálculo independiente coinciden con los mismos eventos, el sistema funciona.
+- **Muestra de referencia:** `tests/muestra/` tiene 27 mensajes con una anomalía de cada
+  tipo, 3 duplicados y una tarjeta sospechosa, con los resultados comprobables a mano.
+- **Cómo lo cuento:** *"Sé lo que tiene que salir antes de ejecutar nada, y lo comparo."*
+
+## D11 · El dinero en DECIMAL, nunca en float
+
+- **Qué:** los importes se tratan como decimales exactos (`Decimal` en Python,
+  `DECIMAL(10,2)` en Hive) y se redondean "hacia arriba en el 5".
+- **Por qué:** en float, 35,95 / 2 = 17,975 puede guardarse como 17,97499… y redondear a
+  17,97. En decimal da 17,98, que es lo correcto. En la muestra pasa justo esto.
+- **Cómo lo cuento:** *"Con dinero no se usan floats: un céntimo mal en millones de pagos es
+  mucho dinero."*
 
 ---
 

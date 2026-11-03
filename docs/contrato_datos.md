@@ -46,7 +46,8 @@ mismo offset en dos lotes, fue **releído** por el consumidor.
 ## 4. Reglas de validez
 
 Un evento que incumple alguna regla **no entra** en la tabla de métricas: va a la tabla de
-cuarentena con el código de la regla incumplida.
+cuarentena con el código de la regla incumplida. Si incumple varias, se anota **la primera**
+en el orden R1, R2, R3, R4, R5.
 
 | Código | Regla |
 |---|---|
@@ -59,22 +60,36 @@ cuarentena con el código de la regla incumplida.
 **Duplicados:** no son un error de dato. Se conserva **una sola fila por `tx_id`** (la de
 menor `(kafka_partition, kafka_offset)`) y se cuentan aparte para poder demostrarlo.
 
+**Orden de tratamiento:** primero se deduplica por `tx_id` y después se validan las reglas.
+Así un pago incorrecto que llega dos veces aparece una sola vez en cuarentena.
+
 ## 5. Anomalías que inyecta el simulador a propósito
 
 | Anomalía | Cómo se genera | Regla que la detecta |
 |---|---|---|
 | Importe negativo o cero | `amount_eur ≤ 0` | `R2_IMPORTE` |
 | Comercio inexistente | `merchant_id = MER-9999` | `R3_COMERCIO` |
-| Fecha en el futuro | `event_ts` + 30 días | `R4_FECHA` |
+| Fecha en el futuro | `event_ts` + 10 años (reloj del terminal mal puesto) | `R4_FECHA` |
 | Campo vacío | `card_id` nulo | `R1_CAMPOS` |
+| Valor no permitido | `channel = TELEFONO` | `R5_DOMINIOS` |
 | Duplicado | se reenvía un pago ya publicado (mismo `tx_id`) | deduplicación por `tx_id` |
 
-Además, el simulador genera a propósito algunas **tarjetas con patrón sospechoso** (pagos en
-dos países el mismo día). No son datos incorrectos: son datos válidos que la pregunta 3 debe
-encontrar.
+Los tipos de anomalía se reparten de forma rotatoria, así que con 5 o más anomalías aparece
+al menos una de cada tipo. Solo se inyectan en pagos normales (nunca en los de las tarjetas
+sospechosas), y los duplicados solo se hacen de pagos válidos.
+
+Además, el simulador genera a propósito algunas **tarjetas con patrón sospechoso**: un pago
+en su país y, el mismo día y entre 30 min y 3 h después, un pago físico en otro país. No son
+datos incorrectos: son datos válidos que la pregunta 3 debe encontrar. El resto de tarjetas
+pagan siempre en su país de residencia, así que no hay falsos positivos.
+
+Todo lo inyectado (qué `tx_id` lleva cada anomalía, cuáles se duplicaron y qué tarjetas son
+sospechosas) se guarda en un **manifiesto** JSON: es la verdad conocida contra la que se
+comprueba el sistema.
 
 ## 6. Reproducibilidad
 
-El simulador recibe `--seed` y `--n-events`. Con la misma semilla y los mismos parámetros
-genera **exactamente los mismos eventos**, así que los resultados esperados se pueden
-calcular de antemano.
+El simulador recibe `--seed` y `--n-events` (nº de pagos **distintos**; los duplicados van
+aparte, así que se envían `n_events + duplicados` mensajes). Con la misma semilla y los
+mismos parámetros genera **exactamente los mismos eventos**, así que los resultados esperados
+se pueden calcular de antemano. Por defecto simula del 26/10/2026 al 01/11/2026.

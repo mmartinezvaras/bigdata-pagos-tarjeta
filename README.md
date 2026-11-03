@@ -11,8 +11,8 @@ simulador → Kafka → consumidor de archivo → HDFS → Hive → consultas de
 | Fase | Contenido | Estado |
 |---|---|---|
 | 1 | Caso, preguntas de negocio y contrato de datos | ✅ |
-| 0 | Entorno Docker (Kafka, HDFS, Hive) | 🔧 pendiente de probar en el Mac |
-| 2 | Simulador y muestra de referencia | ⏳ |
+| 0 | Entorno Docker (Kafka, HDFS, Hive) | ✅ |
+| 2 | Simulador y muestra de referencia | ✅ |
 | 3 | Productor Kafka | ⏳ |
 | 4 | Consumidor que archiva en HDFS | ⏳ |
 | 5 | Tablas y consultas Hive | ⏳ |
@@ -23,6 +23,7 @@ simulador → Kafka → consumidor de archivo → HDFS → Hive → consultas de
 
 - [Contrato de datos](docs/contrato_datos.md): campos, tipos, unidades, reglas y anomalías.
 - [Decisiones](docs/decisiones.md): qué se decidió y por qué.
+- [Muestra de referencia](tests/muestra/README.md): 27 mensajes con sus resultados esperados.
 
 ## Estructura del repositorio
 
@@ -64,6 +65,16 @@ Interfaces web: NameNode en http://localhost:9870 · HiveServer2 en http://local
 
 Para parar **sin perder datos**: `./pagos stop`. No uses `docker compose down -v`: borra los
 volúmenes (HDFS, Kafka y el catálogo de Hive).
+
+## Simulador
+
+    ./pagos py simulator/simulador.py --seed 42 --n-events 1000 \
+        --out data/eventos.jsonl --manifest data/manifiesto.json
+    ./pagos py tests/test_simulador.py          # comprobaciones (deben salir todas OK)
+    ./pagos py tests/calcular_esperado.py data/eventos.jsonl --out data/esperado
+
+Opciones: `--n-cards`, `--start AAAA-MM-DD`, `--days`, `--anomaly-rate`, `--dup-rate`,
+`--n-suspicious`. Ayuda completa con `--help`.
 
 ## Servicios
 
