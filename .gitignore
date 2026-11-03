@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+.env
+*.log
+.DS_Store
+# datos generados grandes y volúmenes de Docker
+data/
+volumes/
+*.parquet

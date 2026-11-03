@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Basado en la configuración de Hive de la clase 08; cambian las rutas del warehouse. -->
+<configuration>
+  <property><name>javax.jdo.option.ConnectionURL</name><value>jdbc:derby:;databaseName=/opt/hive/data/metastore_db;create=true</value></property>
+  <property><name>javax.jdo.option.ConnectionDriverName</name><value>org.apache.derby.jdbc.EmbeddedDriver</value></property>
+  <property><name>javax.jdo.option.ConnectionUserName</name><value>APP</value></property>
+  <property><name>javax.jdo.option.ConnectionPassword</name><value>mine</value></property>
+  <property><name>hive.execution.engine</name><value>mr</value></property>
+  <property><name>hive.exec.mode.local.auto</name><value>true</value></property>
+  <property><name>hive.metastore.warehouse.dir</name><value>hdfs://namenode:9000/pagos/hive/warehouse</value></property>
+  <property><name>hive.metastore.warehouse.external.dir</name><value>hdfs://namenode:9000/pagos/hive/external</value></property>
+  <property><name>hive.exec.scratchdir</name><value>/tmp/pagos_hive</value></property>
+  <property><name>hive.server2.thrift.bind.host</name><value>0.0.0.0</value></property>
+  <property><name>hive.server2.enable.doAs</name><value>false</value></property>
+  <property><name>hive.stats.autogather</name><value>false</value></property>
+  <property><name>hive.vectorized.execution.enabled</name><value>false</value></property>
+  <property><name>hive.exec.dynamic.partition.mode</name><value>nonstrict</value></property>
+</configuration>

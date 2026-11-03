@@ -1,0 +1,109 @@
+# Entorno completo del proyecto: HDFS (1 NameNode + 2 DataNodes), Kafka (1 broker KRaft),
+# Hive (HiveServer2 con metastore Derby embebido) y un contenedor Python para el código.
+#
+# Nombre de proyecto propio ("pagos") para que los volúmenes no se mezclen con los del
+# laboratorio de clase ("aula-hdfs"). Los puertos sí coinciden: para el laboratorio antes
+# de arrancar este entorno.
+name: pagos
+
+x-hadoop: &hadoop
+  build: ./docker/hadoop
+  image: pagos-hadoop:3.4.2
+  environment:
+    HADOOP_HEAPSIZE_MAX: "512"
+  mem_limit: 1g
+
+services:
+  # ---------- HDFS ----------
+  namenode:
+    <<: *hadoop
+    hostname: namenode
+    command: [namenode]
+    ports: ["127.0.0.1:9870:9870"]          # interfaz web del NameNode
+    volumes: ["nn:/data/name"]
+
+  dn1:
+    <<: *hadoop
+    hostname: dn1
+    command: [datanode]
+    depends_on: [namenode]
+    volumes: ["dn1:/data/data"]
+
+  dn2:
+    <<: *hadoop
+    hostname: dn2
+    command: [datanode]
+    depends_on: [namenode]
+    volumes: ["dn2:/data/data"]
+
+  # ---------- Kafka ----------
+  kafka:
+    image: apache/kafka:3.9.1
+    hostname: kafka
+    user: "0:0"                              # para poder escribir en el volumen montado
+    mem_limit: 1g
+    ports: ["127.0.0.1:29092:29092"]         # acceso opcional desde el Mac
+    environment:
+      CLUSTER_ID: "pagos-kafka-cluster-0001"
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      # Un solo broker: los topics internos no pueden tener réplicas.
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      # Los topics se crean a mano con sus particiones (ver ./pagos init).
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_HEAP_OPTS: "-Xms512m -Xmx512m"
+    volumes: ["kafka_data:/var/lib/kafka/data"]
+
+  # ---------- Hive ----------
+  hiveserver2:
+    image: apache/hive:4.1.0@sha256:b957bb0e698e560d24e162b7549d79f191d58703e92899a886618c317f6e8f30
+    hostname: hiveserver2
+    user: "0:0"
+    mem_limit: 2560m
+    depends_on: [namenode]
+    environment:
+      SERVICE_NAME: hiveserver2
+      IS_RESUME: "false"
+      HADOOP_CONF_DIR: /opt/hive/conf
+    ports:
+      - "127.0.0.1:10000:10000"              # JDBC (beeline, DBeaver)
+      - "127.0.0.1:10002:10002"              # interfaz web de HiveServer2
+    volumes:
+      - ./docker/hadoop/core-site.xml:/opt/hive/conf/core-site.xml:ro
+      - ./docker/hadoop/hdfs-site.xml:/opt/hive/conf/hdfs-site.xml:ro
+      - ./docker/hadoop/mapred-site.xml:/opt/hive/conf/mapred-site.xml:ro
+      - ./docker/hive/hive-site.xml:/opt/hive/conf/hive-site.xml:ro
+      - ./hive:/opt/sql:ro                    # nuestros .sql, para lanzarlos con beeline -f
+      - hive_catalogo:/opt/hive/data
+
+  # ---------- Código Python ----------
+  app:
+    build: ./docker/app
+    image: pagos-app:1
+    hostname: app
+    mem_limit: 512m
+    depends_on: [kafka, namenode]
+    environment:
+      KAFKA_BOOTSTRAP: kafka:9092
+      HDFS_URL: http://namenode:9870
+      HDFS_USER: root
+    volumes:
+      - ./:/proyecto                          # el código se edita en el Mac y se ejecuta aquí
+    working_dir: /proyecto
+
+volumes:
+  nn:
+  dn1:
+  dn2:
+  kafka_data:
+  hive_catalogo:

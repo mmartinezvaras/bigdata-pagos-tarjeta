@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# Atajos para manejar el entorno del proyecto. Uso: ./pagos <orden> [argumentos]
+set -euo pipefail
+cd "$(dirname "$0")"
+
+TOPIC="card-payments"
+PARTITIONS=3
+
+dc() { docker compose "$@"; }
+
+case "${1:-}" in
+  up)
+    # Construye las imágenes (solo la primera vez) y arranca todos los servicios.
+    dc build
+    dc up -d
+    dc ps
+    ;;
+
+  stop)
+    # Para los contenedores CONSERVANDO los datos (volúmenes).
+    dc stop
+    ;;
+
+  ready)
+    # Espera a que HDFS, Kafka y Hive estén listos para trabajar.
+    echo '· Esperando HDFS (modo seguro desactivado y 2 DataNodes vivos)...'
+    for i in $(seq 1 40); do
+      modo=$(dc exec -T namenode hdfs dfsadmin -safemode get 2>/dev/null || true)
+      informe=$(dc exec -T namenode hdfs dfsadmin -report 2>/dev/null || true)
+      if grep -q 'Safe mode is OFF' <<<"$modo" && grep -q 'Live datanodes (2)' <<<"$informe"; then
+        echo '  HDFS listo.'; break
+      fi
+      [ "$i" = 40 ] && { echo '  HDFS no responde. Revisa: docker compose logs namenode' >&2; exit 1; }
+      sleep 3
+    done
+    echo '· Esperando Kafka...'
+    for i in $(seq 1 30); do
+      if dc exec -T kafka /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server kafka:9092 >/dev/null 2>&1; then
+        echo '  Kafka listo.'; break
+      fi
+      [ "$i" = 30 ] && { echo '  Kafka no responde. Revisa: docker compose logs kafka' >&2; exit 1; }
+      sleep 3
+    done
+    echo '· Esperando HiveServer2 (tarda 1-2 minutos la primera vez)...'
+    for i in $(seq 1 36); do
+      if dc exec -T hiveserver2 beeline -u jdbc:hive2://localhost:10000/default -n root --silent=true -e 'SELECT 1;' >/dev/null 2>&1; then
+        echo '  Hive listo.'; exit 0
+      fi
+      [ "$i" = 36 ] && { echo '  Hive no responde. Revisa: docker compose logs hiveserver2' >&2; exit 1; }
+      sleep 5
+    done
+    ;;
+
+  init)
+    # Crea el topic con sus particiones y las carpetas base en HDFS. Se puede repetir sin problema.
+    dc exec -T kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 \
+      --create --if-not-exists --topic "$TOPIC" --partitions "$PARTITIONS" --replication-factor 1
+    dc exec -T kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --describe --topic "$TOPIC"
+    dc exec -T namenode hdfs dfs -mkdir -p /pagos/raw /pagos/ref /pagos/hive
+    dc exec -T namenode hdfs dfs -ls /pagos
+    ;;
+
+  check)
+    # Prueba de humo: el contenedor Python escribe en HDFS y publica/lee en Kafka.
+    dc exec -T app python scripts/smoke_test.py
+    ;;
+
+  hdfs)   shift; dc exec -T namenode hdfs "$@" ;;                         # ./pagos hdfs dfs -ls /pagos
+  kafka)  shift; cmd="$1"; shift; dc exec -T kafka "/opt/kafka/bin/$cmd.sh" --bootstrap-server kafka:9092 "$@" ;;
+                                                                        # ./pagos kafka kafka-topics --list
+  hive)   shift; dc exec -T hiveserver2 beeline -u jdbc:hive2://localhost:10000/default -n root \
+            --silent=true --showHeader=true --outputformat=tsv2 -e "$*" ;;   # ./pagos hive "SHOW TABLES;"
+  hivef)  shift; dc exec -T hiveserver2 beeline -u jdbc:hive2://localhost:10000/default -n root \
+            --silent=true --showHeader=true --outputformat=tsv2 -f "/opt/sql/$1" ;; # ./pagos hivef 01_tablas.sql
+  py)     shift; dc exec -T app python "$@" ;;                            # ./pagos py simulator/simulador.py ...
+
+  *)
+    cat >&2 <<'EOF'
+Uso: ./pagos <orden>
+  up       construir y arrancar todo         stop    parar conservando datos
+  ready    esperar a que todo esté listo     init    crear topic y carpetas HDFS
+  check    prueba de humo Python↔HDFS↔Kafka
+  hdfs ... | kafka <script> ... | hive "SQL;" | hivef fichero.sql | py script.py ...
+EOF
+    exit 2 ;;
+esac
