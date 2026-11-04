@@ -60,6 +60,20 @@ case "${1:-}" in
     dc exec -T namenode hdfs dfs -ls /pagos
     ;;
 
+  reset-topic)
+    # Borra el topic (y TODOS sus mensajes) y lo vuelve a crear vacío. Útil para repetir una
+    # prueba desde cero. No toca HDFS ni Hive.
+    dc exec -T kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 \
+      --delete --if-exists --topic "$TOPIC"
+    for i in $(seq 1 20); do       # el borrado tarda unos segundos en completarse
+      if dc exec -T kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 \
+           --create --if-not-exists --topic "$TOPIC" --partitions "$PARTITIONS" \
+           --replication-factor 1 2>/dev/null; then break; fi
+      sleep 2
+    done
+    dc exec -T kafka /opt/kafka/bin/kafka-get-offsets.sh --bootstrap-server kafka:9092 --topic "$TOPIC"
+    ;;
+
   check)
     # Prueba de humo: el contenedor Python escribe en HDFS y publica/lee en Kafka.
     dc exec -T app python scripts/smoke_test.py
@@ -79,6 +93,7 @@ case "${1:-}" in
 Uso: ./pagos <orden>
   up       construir y arrancar todo         stop    parar conservando datos
   ready    esperar a que todo esté listo     init    crear topic y carpetas HDFS
+  reset-topic  vaciar el topic card-payments (borrar y crear de nuevo)
   check    prueba de humo Python↔HDFS↔Kafka
   hdfs ... | kafka <script> ... | hive "SQL;" | hivef fichero.sql | py script.py ...
 EOF

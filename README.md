@@ -13,7 +13,7 @@ simulador → Kafka → consumidor de archivo → HDFS → Hive → consultas de
 | 1 | Caso, preguntas de negocio y contrato de datos | ✅ |
 | 0 | Entorno Docker (Kafka, HDFS, Hive) | ✅ |
 | 2 | Simulador y muestra de referencia | ✅ |
-| 3 | Productor Kafka | ⏳ |
+| 3 | Productor Kafka | 🔧 pendiente de probar |
 | 4 | Consumidor que archiva en HDFS | ⏳ |
 | 5 | Tablas y consultas Hive | ⏳ |
 | 6 | Pruebas y evidencias | ⏳ |
@@ -75,6 +75,15 @@ volúmenes (HDFS, Kafka y el catálogo de Hive).
 
 Opciones: `--n-cards`, `--start AAAA-MM-DD`, `--days`, `--anomaly-rate`, `--dup-rate`,
 `--n-suspicious`. Ayuda completa con `--help`.
+
+## Productor
+
+    ./pagos py producer/productor.py tests/muestra/eventos.jsonl          # publica la muestra
+    ./pagos py producer/productor.py data/eventos.jsonl --rate 50         # 50 pagos/segundo
+    ./pagos kafka kafka-get-offsets --topic card-payments                 # mensajes por partición
+
+Publica en `card-payments` con `card_id` como clave. Al terminar enseña cuántos mensajes
+fueron a cada partición y comprueba que ninguna tarjeta se repartió entre varias.
 
 ## Servicios
 

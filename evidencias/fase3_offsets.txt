@@ -1,0 +1,3 @@
+card-payments:0:10
+card-payments:1:13
+card-payments:2:4

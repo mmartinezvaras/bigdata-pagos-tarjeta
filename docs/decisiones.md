@@ -127,7 +127,46 @@ preguntar.
 - **Cómo lo cuento:** *"Con dinero no se usan floats: un céntimo mal en millones de pagos es
   mucho dinero."*
 
+## D12 · La clave del mensaje es `card_id`
+
+- **Qué:** cada pago se publica con `card_id` como clave. Kafka calcula un hash de la clave y
+  así decide la partición, de modo que la misma tarjeta va **siempre a la misma partición**.
+- **Por qué:** Kafka solo garantiza el orden **dentro de una partición**. Para fraude
+  necesito ver los pagos de una tarjeta en el orden en que ocurrieron ("pagó en Madrid y 40
+  minutos después en Londres"). Con `card_id` como clave, ese orden está garantizado.
+- **Descartado:** `tx_id` (cada pago a una partición distinta, se pierde el orden por
+  tarjeta); `merchant_id` (un supermercado grande concentraría muchos mensajes en una
+  partición); sin clave (reparto al azar, sin orden por tarjeta).
+- **Pagos sin `card_id`** (anomalía R1): van sin clave y Kafka los reparte al azar. No pasa
+  nada, porque acabarán en cuarentena.
+- **Cómo lo cuento:** *"La clave decide la partición, y la partición el orden. Lo que
+  necesito ordenado son los pagos de cada tarjeta."*
+
+## D13 · 3 particiones
+
+- **Qué:** el topic `card-payments` tiene 3 particiones.
+- **Por qué:** las particiones son la unidad de paralelismo: con 3, puedo tener hasta 3
+  consumidores del mismo grupo leyendo a la vez, uno por partición. Para el volumen del
+  proyecto sobra, y permite enseñar el reparto. Con pocas tarjetas (la muestra tiene 5) el
+  reparto sale desigual; con muchas se equilibra.
+- **Ojo:** si se aumentan las particiones después, cambia la partición de algunas tarjetas
+  (el hash se reparte entre más particiones) y se pierde el orden durante el cambio.
+- **Cómo lo cuento:** *"3 particiones = hasta 3 consumidores en paralelo."*
+
+## D14 · Entrega segura: `acks=all` e idempotencia
+
+- **Qué:** el productor espera la confirmación del broker (`acks=all`) y tiene activada la
+  idempotencia.
+- **Por qué:** con `acks=all` no se da un pago por enviado hasta que Kafka lo ha guardado.
+  Con idempotencia, si un envío falla y se reintenta, Kafka reconoce la copia y no la guarda
+  dos veces.
+- **Pero siguen llegando duplicados:** los que mete el simulador son mensajes distintos con
+  el mismo `tx_id` (como un terminal que reenvía), y Kafka no puede saber que son el mismo
+  pago. Por eso la deduplicación de verdad se hace por `tx_id`, más adelante.
+- **Cómo lo cuento:** *"Kafka evita los duplicados que crea él mismo; los que vienen del
+  origen los quito yo por `tx_id`."*
+
 ---
 
-*(Se irán añadiendo: clave de Kafka, organización en HDFS, commit de offsets,
+*(Se irán añadiendo: organización en HDFS, commit de offsets,
 formato Parquet, particionado en Hive…)*
