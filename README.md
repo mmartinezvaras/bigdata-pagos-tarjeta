@@ -14,8 +14,8 @@ simulador → Kafka → consumidor de archivo → HDFS → Hive → consultas de
 | 0 | Entorno Docker (Kafka, HDFS, Hive) | ✅ |
 | 2 | Simulador y muestra de referencia | ✅ |
 | 3 | Productor Kafka | ✅ |
-| 4 | Consumidor que archiva en HDFS | 🔧 pendiente de probar |
-| 5 | Tablas y consultas Hive | ⏳ |
+| 4 | Consumidor que archiva en HDFS | ✅ |
+| 5 | Tablas y consultas Hive (resultados = esperados ✔) | ✅ |
 | 6 | Pruebas y evidencias | ⏳ |
 | 7 | README final, diagrama y presentación | ⏳ |
 
@@ -93,6 +93,22 @@ fueron a cada partición y comprueba que ninguna tarjeta se repartió entre vari
     ./pagos raw                   # ficheros en /pagos/raw
     ./pagos verificar             # comprueba que no falta nada de Kafka en HDFS
     ./pagos archivador stop       # parada ordenada  ·  kill = muerte en seco
+
+## Hive
+
+    ./pagos subir-ref                    # catálogo de comercios → /pagos/ref/comercios
+    ./pagos hivef 01_tablas.sql          # crea la base pagos, tablas y vista (una vez)
+    ./pagos hivef 02_limpiar.sql         # registra raw y reconstruye limpios y cuarentena
+    ./pagos consultas                    # P1, P2, P3 y control → evidencias/hive/*.tsv
+    ./pagos py scripts/comparar_con_esperado.py   # compara con tests/muestra/esperado
+
+| Tabla | Formato | Contenido |
+|---|---|---|
+| `pagos.pagos_raw` | JSON, partición `dt` (día de archivo) | todo lo que llegó, tal cual |
+| `pagos.comercios` | CSV | catálogo de comercios |
+| `pagos.v_pagos_validados` | vista | deduplicación + reglas + hora de Madrid |
+| `pagos.pagos_limpios` | Parquet, partición `fecha` (día Madrid) | pagos válidos |
+| `pagos.pagos_cuarentena` | Parquet | pagos rechazados con su `regla` |
 
 ## Servicios
 

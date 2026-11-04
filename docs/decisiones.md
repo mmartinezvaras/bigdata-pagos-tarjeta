@@ -218,6 +218,72 @@ preguntar.
   el lote y sale) o matarlo en seco (`kill` → muere sin avisar) y volver a arrancarlo.
 - **Cómo lo cuento:** *"Lo paro y lo mato a propósito para demostrar que no se pierde nada."*
 
+## D20 · Tres capas en HDFS: raw, ref y curated
+
+- **Qué:** `raw` (JSON tal cual llegó), `ref` (catálogo de comercios) y `curated` (Parquet
+  limpio y cuarentena). Todas las tablas de Hive son **externas**, como en las clases 8 y 9.
+- **Por qué:** raw es la fuente de verdad: si cambian las reglas, curated se reconstruye
+  desde raw con `02_limpiar.sql`. Al ser tablas externas, borrar una tabla no borra los
+  ficheros.
+- **En raw todo es STRING** (menos los metadatos de Kafka): si el importe viene mal escrito,
+  no se convierte en NULL al leerlo. La conversión a `DECIMAL` se hace al limpiar, donde un
+  fallo va a cuarentena con su motivo.
+- **Cómo lo cuento:** *"Raw guarda lo que llegó; curated, lo que vale. Curated siempre se
+  puede rehacer desde raw."*
+
+## D21 · Deduplicar y validar en una vista
+
+- **Qué:** la vista `pagos.v_pagos_validados` contiene toda la lógica: 1) `ROW_NUMBER()`
+  por `tx_id`, quedándose con la de menor `(kafka_partition, kafka_offset)`; 2) un `CASE`
+  que devuelve la primera regla incumplida o NULL; 3) el paso de UTC a hora de Madrid.
+  `02_limpiar.sql` vuelca los válidos a `pagos_limpios` y el resto a `pagos_cuarentena`.
+- **Por qué:** la lógica está en un solo sitio, se puede consultar directamente para ver
+  qué está pasando y las dos tablas salen de la misma regla, así que no puede pasar que un
+  pago esté en las dos o en ninguna.
+- **Primero deduplicar, después validar:** un pago incorrecto que llega dos veces aparece
+  una sola vez en cuarentena.
+- **Cómo lo cuento:** *"Una sola receta: cada pago acaba o en limpios o en cuarentena, nunca
+  en los dos."*
+
+## D22 · `pagos_limpios` en Parquet particionado por día
+
+- **Qué:** Parquet con compresión Snappy, particionado por `fecha` (día de negocio en
+  Madrid). La cuarentena también va en Parquet, sin particionar (es pequeña).
+- **Por qué:** Parquet guarda por columnas: para "suma de importes por categoría" Hive solo
+  lee esas columnas, no la fila entera. Particionar por fecha hace que una consulta de un
+  día lea solo su carpeta (lo que vimos con `EXPLAIN` en la clase 9).
+- **Partición por día de Madrid, no por día de archivo:** raw está partido por el día en que
+  llegó (`dt`); curated, por el día en que se pagó, que es lo que pregunta negocio.
+- **Cómo lo cuento:** *"Raw por día de llegada; curated por día de negocio, en columnas."*
+
+## D23 · Comprobación automática contra lo esperado
+
+- **Qué:** `./pagos consultas` guarda la salida de Hive en `evidencias/hive/` y
+  `scripts/comparar_con_esperado.py` la compara, celda a celda y como decimales exactos, con
+  los resultados del oráculo.
+- **Por qué:** no basta con que las consultas "salgan": hay que demostrar que dan lo
+  correcto. Así es repetible: cualquiera puede ejecutarlo y ver el mismo `OK`.
+- **Cómo lo cuento:** *"No me fío de mirar la tabla a ojo: lo compara un script."*
+
+## D24 · Tres ajustes de Hive en este entorno (problemas encontrados y resueltos)
+
+Problemas reales que aparecieron al ejecutar la Fase 5 y cómo se resolvieron:
+
+| Síntoma | Causa | Solución |
+|---|---|---|
+| Solo se creaban 2 de las 5 tablas, sin error claro | Un comentario `--` con `;` dentro: beeline corta las instrucciones por cada `;`, aunque esté en un comentario | Ningún `;` (ni comillas) dentro de comentarios en los `.sql` |
+| `AssertionError: Cannot add expression of different type to set` al crear la vista | Fallo del optimizador CBO de Hive (Calcite) al deducir los tipos de las expresiones del `CASE` y del `COALESCE` | Tipos explícitos con `CAST(... AS STRING)` y `SET hive.cbo.enable=false` en los scripts de limpieza |
+| `return code 1 from MapredLocalTask` en la limpieza | Hive convierte el `JOIN` con comercios en un *map join*, que lanza un proceso Java aparte que falla en este Docker local | `SET hive.auto.convert.join=false`: join normal |
+
+- **Impacto:** ninguno en los resultados (lo demuestra la comparación con lo esperado). En
+  rendimiento, con este volumen no se nota. En un clúster real se investigaría cada uno en
+  vez de desactivarlo.
+- **Para encontrar las causas:** `./pagos hivef` repite en modo detallado la orden que falla
+  y busca en el log interno de Hive, porque beeline solo muestra un mensaje genérico.
+- **Cómo lo cuento:** *"El mensaje de beeline no dice nada: la causa real está en el log de
+  HiveServer2. Tres problemas, tres causas distintas, y la comparación con lo esperado
+  demuestra que las soluciones no cambian los resultados."*
+
 ---
 
-*(Se irán añadiendo: formato Parquet, particionado en Hive, deduplicación…)*
+*(Se irán añadiendo las decisiones de las pruebas y las limitaciones.)*

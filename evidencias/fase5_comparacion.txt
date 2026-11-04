@@ -1,0 +1,15 @@
+[OK] p1_gasto_dia_categoria: 10 filas en Hive, 10 esperadas
+[OK] p2_franja_horaria: 13 filas en Hive, 13 esperadas
+[OK] p3_tarjetas_sospechosas: 1 filas en Hive, 1 esperadas
+[OK] pagos_distintos: Hive 24 · esperado 24
+[OK] validos: Hive 19 · esperado 19
+[OK] importe_aprobado_deduplicado: Hive 1225.46 · esperado 1225.46
+[OK] cuarentena_R1_CAMPOS: Hive 1 · esperado 1
+[OK] cuarentena_R2_IMPORTE: Hive 1 · esperado 1
+[OK] cuarentena_R3_COMERCIO: Hive 1 · esperado 1
+[OK] cuarentena_R4_FECHA: Hive 1 · esperado 1
+[OK] cuarentena_R5_DOMINIOS: Hive 1 · esperado 1
+[info] filas en raw: 27 (mensajes enviados: 27) · relecturas del consumidor: 0
+[info] gasto aprobado SIN deduplicar: 1293.76 € · deduplicado: 1225.46 €
+
+HIVE DA EXACTAMENTE LO ESPERADO

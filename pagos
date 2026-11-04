@@ -8,6 +8,31 @@ PARTITIONS=3
 
 dc() { docker compose "$@"; }
 
+# Quita de la salida de errores los avisos de arranque de Hive/Hadoop (SLF4J, log4j,
+# NativeCodeLoader...), que no son errores. Los errores de verdad ("Error: ...") se ven.
+RUIDO='SLF4J|log4j|NativeCodeLoader|HADOOP_CONF_DIR|package scanning|packages. attribute|logging.apache.org|main INFO|main WARN'
+sin_ruido() { grep -vE "$RUIDO" >&2 || true; }        # para la salida de errores
+limpio()    { grep -vE "$RUIDO|^[[:space:]]*$" || true; }            # para la salida normal
+
+# Ejecuta un fichero .sql de la carpeta hive/ con beeline (salida en TSV con cabecera).
+# Si falla, enseña el motivo real, que Hive solo escribe en su log.
+hive_fichero() {
+  local estado=0
+  dc exec -T hiveserver2 beeline -u jdbc:hive2://localhost:10000/default -n root \
+    --silent=true --showHeader=true --outputformat=tsv2 -f "/opt/sql/$1" 2> >(sin_ruido) | limpio \
+    || estado=$?
+  if [ "$estado" != 0 ]; then
+    echo "--- Detalle del error (repetido en modo detallado) ---" >&2
+    dc exec -T hiveserver2 beeline -u jdbc:hive2://localhost:10000/default -n root \
+      --silent=true --verbose=true -f "/opt/sql/$1" 2>&1 \
+      | grep -E "Error|Exception|Caused by|FAILED" | grep -vE "$RUIDO|^\s+at " | head -15 >&2 || true
+    echo "--- Log interno de Hive ---" >&2
+    dc exec -T hiveserver2 sh -c 'for f in /tmp/*/hive.log /tmp/hive.log /opt/hive/logs/*.log; do [ -f "$f" ] && tail -n 400 "$f"; done' 2>/dev/null \
+      | grep -E "Error|Exception|Caused by|FAILED" | grep -vE "$RUIDO" | tail -15 >&2 || true
+    return "$estado"
+  fi
+}
+
 case "${1:-}" in
   up)
     # Construye las imágenes (solo la primera vez) y arranca todos los servicios.
@@ -101,18 +126,34 @@ case "${1:-}" in
     dc exec -T app python scripts/verificar_archivo.py
     ;;
 
+  subir-ref)
+    # Sube el catálogo de comercios a HDFS (lo usa Hive para la regla R3).
+    dc exec -T namenode hdfs dfs -mkdir -p /pagos/ref/comercios
+    dc exec -T namenode hdfs dfs -put -f - /pagos/ref/comercios/comercios.csv < simulator/comercios.csv
+    dc exec -T namenode hdfs dfs -ls /pagos/ref/comercios
+    ;;
+
+  consultas)
+    # Lanza P1, P2, P3 y el control, y guarda cada resultado en evidencias/hive/*.tsv
+    mkdir -p evidencias/hive
+    for q in p1_gasto_dia_categoria p2_franja_horaria p3_tarjetas_sospechosas control; do
+      echo "== $q"
+      hive_fichero "consultas/$q.sql" | tee "evidencias/hive/$q.tsv"
+      echo
+    done
+    ;;
+
   check)
     # Prueba de humo: el contenedor Python escribe en HDFS y publica/lee en Kafka.
     dc exec -T app python scripts/smoke_test.py
     ;;
 
-  hdfs)   shift; dc exec -T namenode hdfs "$@" ;;                         # ./pagos hdfs dfs -ls /pagos
+  hdfs)   shift; dc exec -T namenode hdfs "$@" 2> >(sin_ruido) | limpio ;;                         # ./pagos hdfs dfs -ls /pagos
   kafka)  shift; cmd="$1"; shift; dc exec -T kafka "/opt/kafka/bin/$cmd.sh" --bootstrap-server kafka:9092 "$@" ;;
                                                                         # ./pagos kafka kafka-topics --list
   hive)   shift; dc exec -T hiveserver2 beeline -u jdbc:hive2://localhost:10000/default -n root \
-            --silent=true --showHeader=true --outputformat=tsv2 -e "$*" ;;   # ./pagos hive "SHOW TABLES;"
-  hivef)  shift; dc exec -T hiveserver2 beeline -u jdbc:hive2://localhost:10000/default -n root \
-            --silent=true --showHeader=true --outputformat=tsv2 -f "/opt/sql/$1" ;; # ./pagos hivef 01_tablas.sql
+            --silent=true --showHeader=true --outputformat=tsv2 -e "$*" 2> >(sin_ruido) | limpio ;;   # ./pagos hive "SHOW TABLES;"
+  hivef)  shift; hive_fichero "$1" ;;                                    # ./pagos hivef 01_tablas.sql
   py)     shift; dc exec -T app python "$@" ;;                            # ./pagos py simulator/simulador.py ...
 
   *)
@@ -122,6 +163,7 @@ Uso: ./pagos <orden>
   ready    esperar a que todo esté listo     init    crear topic y carpetas HDFS
   reset-topic  vaciar el topic card-payments (borrar y crear de nuevo)
   archivador start|stop|kill|logs    lag    raw    verificar
+  subir-ref    consultas (P1-P3 + control → evidencias/hive)
   check    prueba de humo Python↔HDFS↔Kafka
   hdfs ... | kafka <script> ... | hive "SQL;" | hivef fichero.sql | py script.py ...
 EOF
