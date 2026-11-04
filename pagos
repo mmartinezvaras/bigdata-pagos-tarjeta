@@ -18,7 +18,7 @@ case "${1:-}" in
 
   stop)
     # Para los contenedores CONSERVANDO los datos (volúmenes).
-    dc stop
+    dc --profile pipeline stop
     ;;
 
   ready)
@@ -74,6 +74,33 @@ case "${1:-}" in
     dc exec -T kafka /opt/kafka/bin/kafka-get-offsets.sh --bootstrap-server kafka:9092 --topic "$TOPIC"
     ;;
 
+  archivador)
+    # Consumidor Kafka → HDFS como servicio.
+    case "${2:-}" in
+      start) dc --profile pipeline up -d archivador ;;
+      stop)  dc --profile pipeline stop archivador ;;     # parada ordenada (SIGTERM)
+      kill)  dc --profile pipeline kill archivador ;;     # muerte en seco (SIGKILL)
+      logs)  dc --profile pipeline logs -f archivador ;;  # Ctrl-C para dejar de mirar
+      *) echo 'Uso: ./pagos archivador start | stop | kill | logs' >&2; exit 2 ;;
+    esac
+    ;;
+
+  lag)
+    # Dónde va leyendo el archivador en cada partición y cuánto le falta (LAG).
+    dc exec -T kafka /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server kafka:9092 \
+      --describe --group archivador-hdfs
+    ;;
+
+  raw)
+    # Ficheros archivados en HDFS.
+    dc exec -T namenode hdfs dfs -ls -R /pagos/raw 2>/dev/null | grep -v '^d' || true
+    ;;
+
+  verificar)
+    # ¿Está en HDFS todo lo que hay en Kafka?
+    dc exec -T app python scripts/verificar_archivo.py
+    ;;
+
   check)
     # Prueba de humo: el contenedor Python escribe en HDFS y publica/lee en Kafka.
     dc exec -T app python scripts/smoke_test.py
@@ -94,6 +121,7 @@ Uso: ./pagos <orden>
   up       construir y arrancar todo         stop    parar conservando datos
   ready    esperar a que todo esté listo     init    crear topic y carpetas HDFS
   reset-topic  vaciar el topic card-payments (borrar y crear de nuevo)
+  archivador start|stop|kill|logs    lag    raw    verificar
   check    prueba de humo Python↔HDFS↔Kafka
   hdfs ... | kafka <script> ... | hive "SQL;" | hivef fichero.sql | py script.py ...
 EOF

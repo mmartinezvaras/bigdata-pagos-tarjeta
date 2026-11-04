@@ -166,7 +166,58 @@ preguntar.
 - **Cómo lo cuento:** *"Kafka evita los duplicados que crea él mismo; los que vienen del
   origen los quito yo por `tx_id`."*
 
+## D15 · Commit del offset DESPUÉS de escribir en HDFS (at-least-once)
+
+- **Qué:** el archivador desactiva el commit automático. Para cada lote: 1) escribe en HDFS,
+  2) solo si HDFS confirma, hace commit en Kafka del offset siguiente al último guardado.
+- **Por qué:** el commit es decirle a Kafka "ya he guardado hasta aquí". Si se dice antes de
+  guardar y el proceso muere, esos mensajes se pierden para siempre. Haciéndolo después, si
+  muere entre la escritura y el commit, al volver relee ese lote y lo escribe otra vez:
+  puede haber repetidos, pero **nunca pérdidas**.
+- **Las repeticiones:** se reconocen porque tienen la misma `(kafka_partition,
+  kafka_offset)`, y se quitan en Hive al deduplicar por `tx_id`.
+- **Descartado:** commit automático (Kafka confirma cada 5 s por su cuenta, aunque no se
+  haya escrito nada: puede perder datos); exactly-once (necesitaría transacciones que
+  abarquen Kafka y HDFS, y HDFS no participa en ellas).
+- **Cómo lo cuento:** *"Primero guardo, luego confirmo. Prefiero un repetido, que sé quitar,
+  a un pago perdido, que no sé recuperar."*
+
+## D16 · Lotes por tamaño o por tiempo
+
+- **Qué:** el archivador acumula hasta 500 mensajes o 5 segundos, lo que llegue antes, y
+  escribe el lote de una vez.
+- **Por qué:** HDFS está pensado para pocos ficheros grandes, no para miles de ficheros de
+  una línea (cada fichero ocupa memoria en el NameNode). El límite de tiempo evita que, con
+  poco tráfico, un pago se quede esperando mucho antes de archivarse.
+- **Cómo lo cuento:** *"Lotes para no llenar HDFS de ficheros diminutos, con un máximo de
+  5 segundos de retraso."*
+
+## D17 · Organización en HDFS y nombres de fichero con offsets
+
+- **Qué:** `/pagos/raw/card-payments/dt=AAAA-MM-DD/part-<partición>-<offset_ini>-<offset_fin>.jsonl`.
+  `dt` es el día (UTC) en que se archivó. Cada fila lleva además `kafka_partition`,
+  `kafka_offset`, `ingest_ts` y `batch_id`.
+- **Por qué:** con solo mirar el nombre sé de qué partición y de qué rango de offsets viene
+  cada fichero, y con las columnas puedo seguir cualquier pago hasta su mensaje en Kafka. La
+  carpeta `dt=` es el formato que Hive entiende como partición.
+- **Raw = tal cual llega:** aquí no se valida ni se corrige nada. Si mañana cambian las
+  reglas, puedo reprocesar desde raw.
+- **Cómo lo cuento:** *"Raw es la copia fiel de lo que llegó, con su origen apuntado."*
+
+## D18 · Escritura atómica: fichero temporal + renombrado
+
+- **Qué:** cada fichero se escribe primero como `_part-....jsonl.tmp` y después se renombra.
+- **Por qué:** Hive ignora los ficheros que empiezan por `_`, y el renombrado en HDFS es
+  atómico. Así nadie puede leer un fichero a medio escribir si el proceso muere a mitad.
+- **Cómo lo cuento:** *"Un fichero en raw está entero o no está."*
+
+## D19 · El archivador es un servicio de Docker aparte
+
+- **Qué:** `./pagos archivador start|stop|kill|logs`. No arranca solo con `./pagos up`.
+- **Por qué:** para las pruebas tengo que poder pararlo de forma ordenada (`stop` → termina
+  el lote y sale) o matarlo en seco (`kill` → muere sin avisar) y volver a arrancarlo.
+- **Cómo lo cuento:** *"Lo paro y lo mato a propósito para demostrar que no se pierde nada."*
+
 ---
 
-*(Se irán añadiendo: organización en HDFS, commit de offsets,
-formato Parquet, particionado en Hive…)*
+*(Se irán añadiendo: formato Parquet, particionado en Hive, deduplicación…)*

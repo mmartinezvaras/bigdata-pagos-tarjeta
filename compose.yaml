@@ -101,6 +101,25 @@ services:
       - ./:/proyecto                          # el código se edita en el Mac y se ejecuta aquí
     working_dir: /proyecto
 
+  # ---------- Consumidor archivador (Kafka → HDFS) ----------
+  # No arranca con "./pagos up": se controla aparte con "./pagos archivador start|stop|kill"
+  # (perfil "pipeline"), para poder pararlo y matarlo en las pruebas.
+  archivador:
+    image: pagos-app:1                        # la misma imagen que "app"
+    hostname: archivador
+    mem_limit: 256m
+    profiles: [pipeline]
+    depends_on: [kafka, namenode]
+    environment:
+      KAFKA_BOOTSTRAP: kafka:9092
+      HDFS_URL: http://namenode:9870
+      HDFS_USER: root
+    volumes:
+      - ./:/proyecto
+    working_dir: /proyecto
+    command: ["python", "consumer/archivador.py"]
+    stop_grace_period: 30s                    # tiempo para terminar el lote al pararlo
+
 volumes:
   nn:
   dn1:

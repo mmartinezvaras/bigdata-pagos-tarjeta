@@ -1,0 +1,9 @@
+HDFS: 3 ficheros, 27 filas en /pagos/raw/card-payments
+
+partición | en Kafka | archivados | faltan | repetidos
+        0 |       10 |         10 |      0 |         0
+        1 |       13 |         13 |      0 |         0
+        2 |        4 |          4 |      0 |         0
+
+Filas con tx_id repetido (duplicados de origen + relecturas): 3
+RESULTADO: OK, no falta ningún mensaje de Kafka en HDFS

@@ -1,0 +1,5 @@
+
+GROUP           TOPIC           PARTITION  CURRENT-OFFSET  LOG-END-OFFSET  LAG             CONSUMER-ID                                          HOST            CLIENT-ID
+archivador-hdfs card-payments   2          4               4               0               archivador-hdfs-fd386e3b-28b3-4d47-b5a5-1345272ded31 /172.19.0.8     archivador-hdfs
+archivador-hdfs card-payments   1          13              13              0               archivador-hdfs-fd386e3b-28b3-4d47-b5a5-1345272ded31 /172.19.0.8     archivador-hdfs
+archivador-hdfs card-payments   0          10              10              0               archivador-hdfs-fd386e3b-28b3-4d47-b5a5-1345272ded31 /172.19.0.8     archivador-hdfs

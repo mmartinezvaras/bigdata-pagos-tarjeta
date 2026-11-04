@@ -13,8 +13,8 @@ simulador → Kafka → consumidor de archivo → HDFS → Hive → consultas de
 | 1 | Caso, preguntas de negocio y contrato de datos | ✅ |
 | 0 | Entorno Docker (Kafka, HDFS, Hive) | ✅ |
 | 2 | Simulador y muestra de referencia | ✅ |
-| 3 | Productor Kafka | 🔧 pendiente de probar |
-| 4 | Consumidor que archiva en HDFS | ⏳ |
+| 3 | Productor Kafka | ✅ |
+| 4 | Consumidor que archiva en HDFS | 🔧 pendiente de probar |
 | 5 | Tablas y consultas Hive | ⏳ |
 | 6 | Pruebas y evidencias | ⏳ |
 | 7 | README final, diagrama y presentación | ⏳ |
@@ -84,6 +84,15 @@ Opciones: `--n-cards`, `--start AAAA-MM-DD`, `--days`, `--anomaly-rate`, `--dup-
 
 Publica en `card-payments` con `card_id` como clave. Al terminar enseña cuántos mensajes
 fueron a cada partición y comprueba que ninguna tarjeta se repartió entre varias.
+
+## Archivador (Kafka → HDFS)
+
+    ./pagos archivador start      # arranca el consumidor como servicio
+    ./pagos archivador logs       # ver qué hace (Ctrl-C para salir de los logs)
+    ./pagos lag                   # offsets confirmados y LAG por partición
+    ./pagos raw                   # ficheros en /pagos/raw
+    ./pagos verificar             # comprueba que no falta nada de Kafka en HDFS
+    ./pagos archivador stop       # parada ordenada  ·  kill = muerte en seco
 
 ## Servicios
 
