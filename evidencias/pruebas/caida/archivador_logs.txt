@@ -1,0 +1,21 @@
+[archivador 12:05:27] leyendo 'card-payments' como grupo 'archivador-hdfs' → HDFS /pagos/raw/card-payments (lote 500 mensajes / 5 s)
+[archivador 12:05:27] particiones asignadas: 0, 1, 2
+[archivador 12:05:34] lote 1: 27 pagos → /pagos/raw/card-payments/dt=2026-11-04 p0[0-9] p1[0-12] p2[0-3] · commit OK (total 27)
+[archivador 23:07:26] señal SIGTERM: termino el lote actual y salgo
+[archivador 23:07:26] particiones retiradas: 0, 1, 2
+[archivador 23:07:26] fin: 27 pagos archivados en 1 lotes
+[archivador 23:09:47] leyendo 'card-payments' como grupo 'archivador-hdfs' → HDFS /pagos/raw/card-payments (lote 500 mensajes / 5 s)
+[archivador 23:09:47] particiones asignadas: 0, 1, 2
+[archivador 23:09:54] lote 1: 324 pagos → /pagos/raw/card-payments/dt=2026-11-04 p0[0-89] p1[0-127] p2[0-105] · commit OK (total 324)
+[archivador 23:10:00] lote 2: 361 pagos → /pagos/raw/card-payments/dt=2026-11-04 p0[90-214] p1[128-253] p2[106-215] · commit OK (total 685)
+[archivador 23:10:33] leyendo 'card-payments' como grupo 'archivador-hdfs' → HDFS /pagos/raw/card-payments (lote 500 mensajes / 5 s)
+[archivador 23:10:33] particiones asignadas: 0, 1, 2
+[archivador 23:10:33] lote 1: 500 pagos → /pagos/raw/card-payments/dt=2026-11-04 p0[215-714] · commit OK (total 500)
+[archivador 23:10:34] lote 2: 500 pagos → /pagos/raw/card-payments/dt=2026-11-04 p0[715-815] p1[254-652] · commit OK (total 1000)
+[archivador 23:10:35] lote 3: 500 pagos → /pagos/raw/card-payments/dt=2026-11-04 p1[653-942] p2[216-425] · commit OK (total 1500)
+[archivador 23:10:36] lote 4: 500 pagos → /pagos/raw/card-payments/dt=2026-11-04 p0[816-869] p1[943-1007] p2[426-806] · commit OK (total 2000)
+[archivador 23:10:43] lote 5: 369 pagos → /pagos/raw/card-payments/dt=2026-11-04 p0[870-997] p1[1008-1146] p2[807-908] · commit OK (total 2369)
+[archivador 23:10:49] lote 6: 6 pagos → /pagos/raw/card-payments/dt=2026-11-04 p0[998-999] p1[1147-1148] p2[909-910] · commit OK (total 2375)
+[archivador 23:10:54] señal SIGTERM: termino el lote actual y salgo
+[archivador 23:10:54] particiones retiradas: 0, 1, 2
+[archivador 23:10:54] fin: 2375 pagos archivados en 6 lotes

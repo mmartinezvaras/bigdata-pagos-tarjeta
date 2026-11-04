@@ -104,6 +104,9 @@ def main() -> int:
         "enable.auto.commit": False,
         # Si el grupo no tiene offsets guardados (primera vez), empezar desde el principio.
         "auto.offset.reset": "earliest",
+        # Si el archivador muere sin despedirse, Kafka tarda esto en darlo por muerto y
+        # dejar que otro (o él mismo al volver) recoja sus particiones. 10 s en vez de 45.
+        "session.timeout.ms": 10000,
         "client.id": "archivador-hdfs",
     })
 

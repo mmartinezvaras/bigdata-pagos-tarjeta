@@ -33,6 +33,19 @@ hive_fichero() {
   fi
 }
 
+# Borra el topic y lo crea vacío con sus particiones.
+reset_topic() {
+  dc exec -T kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 \
+    --delete --if-exists --topic "$TOPIC"
+  for i in $(seq 1 20); do       # el borrado tarda unos segundos en completarse
+    if dc exec -T kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 \
+         --create --if-not-exists --topic "$TOPIC" --partitions "$PARTITIONS" \
+         --replication-factor 1 2>/dev/null; then break; fi
+    sleep 2
+  done
+  dc exec -T kafka /opt/kafka/bin/kafka-get-offsets.sh --bootstrap-server kafka:9092 --topic "$TOPIC"
+}
+
 case "${1:-}" in
   up)
     # Construye las imágenes (solo la primera vez) y arranca todos los servicios.
@@ -86,17 +99,39 @@ case "${1:-}" in
     ;;
 
   reset-topic)
-    # Borra el topic (y TODOS sus mensajes) y lo vuelve a crear vacío. Útil para repetir una
-    # prueba desde cero. No toca HDFS ni Hive.
-    dc exec -T kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 \
-      --delete --if-exists --topic "$TOPIC"
-    for i in $(seq 1 20); do       # el borrado tarda unos segundos en completarse
-      if dc exec -T kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 \
-           --create --if-not-exists --topic "$TOPIC" --partitions "$PARTITIONS" \
-           --replication-factor 1 2>/dev/null; then break; fi
-      sleep 2
+    # Borra el topic (y TODOS sus mensajes) y lo vuelve a crear vacío. No toca HDFS ni Hive.
+    reset_topic
+    ;;
+
+  reset-todo)
+    # Deja el sistema vacío para repetir una prueba desde cero: topic, offsets del archivador,
+    # HDFS raw y curated, y particiones de Hive. NO borra el catálogo de comercios ni las tablas.
+    dc --profile pipeline stop archivador >/dev/null 2>&1 || true
+    for i in $(seq 1 15); do
+      salida=$(dc exec -T kafka /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server kafka:9092 \
+               --delete --group archivador-hdfs 2>&1 || true)
+      if grep -qE "successful|does not exist" <<<"$salida"; then break; fi
+      sleep 2                      # el grupo aún tiene un miembro vivo: esperar a que caduque
     done
-    dc exec -T kafka /opt/kafka/bin/kafka-get-offsets.sh --bootstrap-server kafka:9092 --topic "$TOPIC"
+    echo "· offsets del archivador borrados"
+    reset_topic
+    dc exec -T namenode hdfs dfs -rm -r -f -skipTrash /pagos/raw/card-payments \
+      /pagos/curated/pagos_limpios /pagos/curated/pagos_cuarentena 2> >(sin_ruido) | limpio
+    dc exec -T namenode hdfs dfs -mkdir -p /pagos/raw/card-payments \
+      /pagos/curated/pagos_limpios /pagos/curated/pagos_cuarentena 2> >(sin_ruido) | limpio
+    echo "· HDFS raw y curated vaciados"
+    hive_fichero 00_reset.sql
+    echo "· particiones de Hive sincronizadas: sistema vacío"
+    ;;
+
+  prueba)
+    # Pruebas de la fase 6: ./pagos prueba relectura | caida | volumen [N]
+    nombre="${2:-}"
+    if [ ! -f "scripts/prueba_${nombre}.sh" ]; then
+      echo 'Uso: ./pagos prueba relectura | caida | volumen [N]' >&2; exit 2
+    fi
+    shift 2
+    exec bash "scripts/prueba_${nombre}.sh" "$@"
     ;;
 
   archivador)
@@ -134,11 +169,13 @@ case "${1:-}" in
     ;;
 
   consultas)
-    # Lanza P1, P2, P3 y el control, y guarda cada resultado en evidencias/hive/*.tsv
-    mkdir -p evidencias/hive
-    for q in p1_gasto_dia_categoria p2_franja_horaria p3_tarjetas_sospechosas control; do
+    # Lanza P1, P2, P3, control y cuarentena, y guarda cada resultado en <carpeta>/*.tsv
+    # (por defecto evidencias/hive). Uso: ./pagos consultas [carpeta]
+    destino="${2:-evidencias/hive}"
+    mkdir -p "$destino"
+    for q in p1_gasto_dia_categoria p2_franja_horaria p3_tarjetas_sospechosas control cuarentena; do
       echo "== $q"
-      hive_fichero "consultas/$q.sql" | tee "evidencias/hive/$q.tsv"
+      hive_fichero "consultas/$q.sql" | tee "$destino/$q.tsv"
       echo
     done
     ;;
@@ -163,7 +200,8 @@ Uso: ./pagos <orden>
   ready    esperar a que todo esté listo     init    crear topic y carpetas HDFS
   reset-topic  vaciar el topic card-payments (borrar y crear de nuevo)
   archivador start|stop|kill|logs    lag    raw    verificar
-  subir-ref    consultas (P1-P3 + control → evidencias/hive)
+  subir-ref    consultas [carpeta]    reset-todo (vaciar todo para repetir pruebas)
+  prueba relectura | caida | volumen [N]
   check    prueba de humo Python↔HDFS↔Kafka
   hdfs ... | kafka <script> ... | hive "SQL;" | hivef fichero.sql | py script.py ...
 EOF

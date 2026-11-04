@@ -16,7 +16,7 @@ simulador → Kafka → consumidor de archivo → HDFS → Hive → consultas de
 | 3 | Productor Kafka | ✅ |
 | 4 | Consumidor que archiva en HDFS | ✅ |
 | 5 | Tablas y consultas Hive (resultados = esperados ✔) | ✅ |
-| 6 | Pruebas y evidencias | ⏳ |
+| 6 | Pruebas y evidencias (5/5 OK) | ✅ |
 | 7 | README final, diagrama y presentación | ⏳ |
 
 ## Documentación
@@ -24,6 +24,7 @@ simulador → Kafka → consumidor de archivo → HDFS → Hive → consultas de
 - [Contrato de datos](docs/contrato_datos.md): campos, tipos, unidades, reglas y anomalías.
 - [Decisiones](docs/decisiones.md): qué se decidió y por qué.
 - [Muestra de referencia](tests/muestra/README.md): 27 mensajes con sus resultados esperados.
+- [Pruebas](docs/pruebas.md): qué se prueba, cómo y resultados.
 
 ## Estructura del repositorio
 
@@ -109,6 +110,23 @@ fueron a cada partición y comprueba que ninguna tarjeta se repartió entre vari
 | `pagos.v_pagos_validados` | vista | deduplicación + reglas + hora de Madrid |
 | `pagos.pagos_limpios` | Parquet, partición `fecha` (día Madrid) | pagos válidos |
 | `pagos.pagos_cuarentena` | Parquet | pagos rechazados con su `regla` |
+
+## Pruebas
+
+    ./pagos prueba relectura      # el archivador muere antes del commit y relee
+    ./pagos prueba caida          # se mata el archivador mientras llegan pagos
+    ./pagos prueba volumen        # 100.000 pagos (o ./pagos prueba volumen 20000)
+
+Cada una parte de cero (`./pagos reset-todo`) y deja su registro en `evidencias/pruebas/`.
+
+| Prueba | Resultado |
+|---|---|
+| Muestra de referencia (27 mensajes) | Hive = resultados calculados a mano |
+| Relectura (muere antes del commit) | 0 perdidos, 1 fila releída, eliminada al deduplicar |
+| Caída (SIGKILL con tráfico) | LAG 169 → 1.727 con el archivador muerto → 0 en 6 s al volver, 0 perdidos |
+| Volumen (102.000 mensajes) | Kafka → HDFS en 139 s, Hive en 39 s, 0 perdidos, resultados = esperados |
+
+Detalle en [docs/pruebas.md](docs/pruebas.md).
 
 ## Servicios
 

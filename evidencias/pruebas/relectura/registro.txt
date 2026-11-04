@@ -1,0 +1,277 @@
+Prueba 'relectura' · 2026-11-05 00:07:26
+
+======================================================================
+== 1. Partir de cero y publicar la muestra de referencia (27 mensajes)
+======================================================================
+· offsets del archivador borrados
+Created topic card-payments.
+card-payments:0:0
+card-payments:1:0
+card-payments:2:0
+Deleted /pagos/raw/card-payments
+Deleted /pagos/curated/pagos_limpios
+Deleted /pagos/curated/pagos_cuarentena
+· HDFS raw y curated vaciados
+
+
+
+
+
+
+
+
+
+partition
+partition
+· particiones de Hive sincronizadas: sistema vacío
+[productor] 27 enviados, 27 confirmados por Kafka, 0 fallidos, 0 sin confirmar · 0.5 s (52 msg/s)
+  partición 0: 10 mensajes
+  partición 1: 13 mensajes
+  partición 2: 4 mensajes
+  5 tarjetas distintas · repartidas entre varias particiones: 0 (OK, cada tarjeta en una sola partición)
+  1 mensajes sin card_id (sin clave): Kafka los reparte al azar
+
+======================================================================
+== 2. Archivador con lotes de 5 que MUERE tras escribir el primer lote, sin commit
+======================================================================
+[archivador 23:07:34] leyendo 'card-payments' como grupo 'archivador-hdfs' → HDFS /pagos/raw/card-payments (lote 5 mensajes / 1 s)
+[archivador 23:07:34] particiones asignadas: 0, 1, 2
+[archivador 23:07:35] PRUEBA: lote 1 escrito en HDFS (p1[0-0] p2[0-3]) y muero SIN commit
+>> el archivador ha muerto, como queríamos
+>> Offsets confirmados en Kafka (ninguno: murió antes del commit):
+
+GROUP           TOPIC           PARTITION  CURRENT-OFFSET  LOG-END-OFFSET  LAG             CONSUMER-ID                                          HOST            CLIENT-ID
+archivador-hdfs card-payments   2          -               4               -               archivador-hdfs-50d848e7-399e-4167-be09-c3505339d36b /172.19.0.4     archivador-hdfs
+archivador-hdfs card-payments   1          -               13              -               archivador-hdfs-50d848e7-399e-4167-be09-c3505339d36b /172.19.0.4     archivador-hdfs
+archivador-hdfs card-payments   0          -               10              -               archivador-hdfs-50d848e7-399e-4167-be09-c3505339d36b /172.19.0.4     archivador-hdfs>> Lo que llegó a HDFS antes de morir:
+-rw-r--r--   2 root supergroup        434 2026-11-04 23:07 /pagos/raw/card-payments/dt=2026-11-04/part-1-0000000000-0000000000.jsonl
+-rw-r--r--   2 root supergroup       1715 2026-11-04 23:07 /pagos/raw/card-payments/dt=2026-11-04/part-2-0000000000-0000000003.jsonl
+HDFS: 2 ficheros, 5 filas en /pagos/raw/card-payments
+
+partición | en Kafka | archivados | faltan | repetidos
+        0 |       10 |          0 |     10 |         0
+        1 |       13 |          1 |     12 |         0
+        2 |        4 |          4 |      0 |         0
+
+Filas con tx_id repetido (duplicados de origen + relecturas): 1
+RESULTADO: FALTAN 22 mensajes
+>> faltan mensajes: es lo esperado, el archivador no ha terminado
+
+======================================================================
+== 3. Vuelve el archivador: Kafka le entrega desde el último commit (el principio)
+======================================================================
+[archivador 23:07:38] leyendo 'card-payments' como grupo 'archivador-hdfs' → HDFS /pagos/raw/card-payments (lote 500 mensajes / 5 s)
+[archivador 23:07:44] particiones asignadas: 0, 1, 2
+[archivador 23:07:50] lote 1: 27 pagos → /pagos/raw/card-payments/dt=2026-11-04 p0[0-9] p1[0-12] p2[0-3] · commit OK (total 27)
+[archivador 23:08:15] 30 s sin mensajes nuevos: termino
+[archivador 23:08:15] particiones retiradas: 0, 1, 2
+[archivador 23:08:15] fin: 27 pagos archivados en 1 lotes
+
+Consumer group 'archivador-hdfs' has no active members.
+
+GROUP           TOPIC           PARTITION  CURRENT-OFFSET  LOG-END-OFFSET  LAG             CONSUMER-ID     HOST            CLIENT-ID
+archivador-hdfs card-payments   2          4               4               0               -               -               -
+archivador-hdfs card-payments   1          13              13              0               -               -               -
+archivador-hdfs card-payments   0          10              10              0               -               -               --rw-r--r--   2 root supergroup       4299 2026-11-04 23:07 /pagos/raw/card-payments/dt=2026-11-04/part-0-0000000000-0000000009.jsonl
+-rw-r--r--   2 root supergroup        434 2026-11-04 23:07 /pagos/raw/card-payments/dt=2026-11-04/part-1-0000000000-0000000000.jsonl
+-rw-r--r--   2 root supergroup       5580 2026-11-04 23:07 /pagos/raw/card-payments/dt=2026-11-04/part-1-0000000000-0000000012.jsonl
+-rw-r--r--   2 root supergroup       1715 2026-11-04 23:07 /pagos/raw/card-payments/dt=2026-11-04/part-2-0000000000-0000000003.jsonl
+>> No debe faltar nada; los 'repetidos' son la relectura del lote 1:
+HDFS: 4 ficheros, 28 filas en /pagos/raw/card-payments
+
+partición | en Kafka | archivados | faltan | repetidos
+        0 |       10 |         10 |      0 |         0
+        1 |       13 |         13 |      0 |         1
+        2 |        4 |          4 |      0 |         0
+
+Filas con tx_id repetido (duplicados de origen + relecturas): 4
+RESULTADO: OK, no falta ningún mensaje de Kafka en HDFS
+
+======================================================================
+== Hive: registrar raw, limpiar y lanzar P1-P3
+======================================================================
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+partition
+dt=2026-11-04
+partition
+fecha=2026-10-26
+fecha=2026-10-27
+== p1_gasto_dia_categoria
+
+
+
+
+
+
+
+
+
+
+
+
+
+fecha	categoria	n_pagos	importe_total_eur	ticket_medio_eur
+2026-10-26	ALIMENTACION	2	35.95	17.98
+2026-10-26	ELECTRONICA	1	213.29	213.29
+2026-10-26	MODA	1	148.63	148.63
+2026-10-26	OCIO	1	48.44	48.44
+2026-10-26	RESTAURACION	1	4.80	4.80
+2026-10-26	TRANSPORTE	2	37.89	18.95
+2026-10-27	MODA	2	163.40	81.70
+2026-10-27	RESTAURACION	3	61.63	20.54
+2026-10-27	SALUD	1	29.57	29.57
+2026-10-27	VIAJES	2	481.86	240.93
+
+== p2_franja_horaria
+
+
+
+
+
+
+
+
+
+
+
+hora	n_pagos	n_online	pct_online
+7	1	0	0.0
+8	2	2	100.0
+9	1	0	0.0
+10	1	0	0.0
+11	2	1	50.0
+13	3	1	33.3
+14	1	0	0.0
+15	1	1	100.0
+16	1	1	100.0
+18	2	1	50.0
+20	2	2	100.0
+21	1	0	0.0
+22	1	0	0.0
+
+== p3_tarjetas_sospechosas
+
+
+
+
+
+
+
+
+
+
+
+
+card_id	fecha	n_paises	paises	n_pagos
+CARD-000002	2026-10-27	2	ES,GB	5
+
+== control
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+metrica	valor
+cuarentena_R1_CAMPOS	1
+cuarentena_R2_IMPORTE	1
+cuarentena_R3_COMERCIO	1
+cuarentena_R4_FECHA	1
+cuarentena_R5_DOMINIOS	1
+importe_aprobado_sin_deduplicar	1293.76
+importe_aprobado_deduplicado	1225.46
+relecturas_consumidor	1
+pagos_distintos	24
+filas_raw	28
+validos	19
+
+== cuarentena
+
+
+
+
+
+
+
+regla	tx_id	card_id	merchant_id	amount_eur	channel	event_ts	kafka_partition	kafka_offset
+R1_CAMPOS	TX-deda1b3dbd5c	NULL	MER-0001	64.67	FISICO	2026-10-27T21:48:11Z	2	3
+R2_IMPORTE	TX-3fa71bf90e27	CARD-000006	MER-0004	-11.25	FISICO	2026-10-26T06:46:21Z	1	0
+R3_COMERCIO	TX-8ce2db20a56e	CARD-000002	MER-9999	13.73	FISICO	2026-10-26T19:04:28Z	0	3
+R4_FECHA	TX-e0599132b63e	CARD-000001	MER-0003	34.86	FISICO	2036-10-24T12:04:13Z	0	6
+R5_DOMINIOS	TX-ae841d53434b	CARD-000003	MER-0030	89.67	TELEFONO	2026-10-27T21:55:00Z	1	11
+
+
+======================================================================
+== Comparar Hive con lo esperado
+======================================================================
+[OK] p1_gasto_dia_categoria: 10 filas en Hive, 10 esperadas
+[OK] p2_franja_horaria: 13 filas en Hive, 13 esperadas
+[OK] p3_tarjetas_sospechosas: 1 filas en Hive, 1 esperadas
+[OK] pagos_distintos: Hive 24 · esperado 24
+[OK] validos: Hive 19 · esperado 19
+[OK] importe_aprobado_deduplicado: Hive 1225.46 · esperado 1225.46
+[OK] cuarentena_R1_CAMPOS: Hive 1 · esperado 1
+[OK] cuarentena_R2_IMPORTE: Hive 1 · esperado 1
+[OK] cuarentena_R3_COMERCIO: Hive 1 · esperado 1
+[OK] cuarentena_R4_FECHA: Hive 1 · esperado 1
+[OK] cuarentena_R5_DOMINIOS: Hive 1 · esperado 1
+[info] filas en raw: 28 (mensajes enviados: 27) · relecturas del consumidor: 1
+[info] gasto aprobado SIN deduplicar: 1293.76 € · deduplicado: 1225.46 €
+
+HIVE DA EXACTAMENTE LO ESPERADO
+
+======================================================================
+== RESULTADO DE LA PRUEBA DE RELECTURA: OK
+======================================================================
+>> Registro completo en evidencias/pruebas/relectura/registro.txt

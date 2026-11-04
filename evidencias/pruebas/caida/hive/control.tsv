@@ -1,0 +1,12 @@
+metrica	valor
+cuarentena_R1_CAMPOS	18
+cuarentena_R2_IMPORTE	18
+cuarentena_R3_COMERCIO	18
+cuarentena_R4_FECHA	18
+cuarentena_R5_DOMINIOS	18
+importe_aprobado_sin_deduplicar	225243.33
+importe_aprobado_deduplicado	221320.65
+relecturas_consumidor	0
+pagos_distintos	3000
+filas_raw	3060
+validos	2910

@@ -284,6 +284,21 @@ Problemas reales que aparecieron al ejecutar la Fase 5 y cómo se resolvieron:
   HiveServer2. Tres problemas, tres causas distintas, y la comparación con lo esperado
   demuestra que las soluciones no cambian los resultados."*
 
+## D25 · Pruebas automatizadas y repetibles
+
+- **Qué:** cada prueba es un script (`./pagos prueba relectura | caida | volumen`) que parte
+  de cero (`./pagos reset-todo`), hace todos los pasos explicándolos, guarda el registro en
+  `evidencias/pruebas/` y termina comparando Hive con lo esperado.
+- **Por qué:** una prueba hecha a mano una vez no se puede repetir igual ni enseñar. Así
+  cualquiera puede repetirla, y la evidencia es el registro completo, no una captura.
+- **Tiempo de sesión de 10 s:** si el archivador muere sin despedirse, Kafka espera
+  `session.timeout.ms` antes de darlo por muerto y dejar que otro recoja sus particiones. Lo
+  bajé de 45 s a 10 s para que la recuperación sea rápida.
+- **Ficheros a medias:** si muere mientras escribe, puede quedar un `_part-....tmp`. Hive y
+  la verificación los ignoran (empiezan por `_`), así que no afectan a los resultados.
+- **Cómo lo cuento:** *"Las pruebas son scripts: las repito cuando quiera y el resultado lo
+  da una comparación, no mi opinión."*
+
 ---
 
 *(Se irán añadiendo las decisiones de las pruebas y las limitaciones.)*

@@ -1,0 +1,6 @@
+[productor] 3060 enviados, 3060 confirmados por Kafka, 0 fallidos, 0 sin confirmar · 55.4 s (55 msg/s)
+  partición 0: 1000 mensajes
+  partición 1: 1149 mensajes
+  partición 2: 911 mensajes
+  120 tarjetas distintas · repartidas entre varias particiones: 0 (OK, cada tarjeta en una sola partición)
+  18 mensajes sin card_id (sin clave): Kafka los reparte al azar
