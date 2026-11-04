@@ -301,4 +301,4 @@ Problemas reales que aparecieron al ejecutar la Fase 5 y cómo se resolvieron:
 
 ---
 
-*(Se irán añadiendo las decisiones de las pruebas y las limitaciones.)*
+Las garantías y limitaciones del sistema están en [limitaciones.md](limitaciones.md).

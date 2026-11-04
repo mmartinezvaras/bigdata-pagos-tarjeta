@@ -1,141 +1,235 @@
 # Pagos con tarjeta · Proyecto individual de Sistemas de Big Data
 
-Sistema que simula los pagos con tarjeta de un banco y los lleva por todo el recorrido:
+Sistema de datos de un banco ficticio que **genera, transporta, almacena y consulta** los
+pagos con tarjeta de sus clientes:
 
 ```
-simulador → Kafka → consumidor de archivo → HDFS → Hive → consultas de negocio
+simulador → Kafka → archivador → HDFS → Hive → consultas de negocio
 ```
 
-## Estado
+Todo se ejecuta en local con Docker, y cada resultado se **comprueba automáticamente**
+contra unos resultados esperados calculados de forma independiente.
 
-| Fase | Contenido | Estado |
+![Arquitectura](docs/arquitectura.png)
+
+---
+
+## 1. El caso
+
+Cada vez que un cliente paga con su tarjeta, el banco recibe un evento: *la tarjeta X ha
+pagado 20,76 € en el comercio Y, a las 13:36, en España, y se ha aprobado*. El sistema recoge
+esos eventos en tiempo real, los guarda sin perder ninguno y permite responder con Hive tres
+preguntas, una por cada equipo que usaría los resultados:
+
+| # | Pregunta | Quién la usa |
 |---|---|---|
-| 1 | Caso, preguntas de negocio y contrato de datos | ✅ |
-| 0 | Entorno Docker (Kafka, HDFS, Hive) | ✅ |
-| 2 | Simulador y muestra de referencia | ✅ |
-| 3 | Productor Kafka | ✅ |
-| 4 | Consumidor que archiva en HDFS | ✅ |
-| 5 | Tablas y consultas Hive (resultados = esperados ✔) | ✅ |
-| 6 | Pruebas y evidencias (5/5 OK) | ✅ |
-| 7 | README final, diagrama y presentación | ⏳ |
+| **P1** | ¿Cuánto se gasta cada día en cada categoría de comercio? (nº de pagos aprobados, importe total y ticket medio en €) | Negocio / marketing |
+| **P2** | ¿A qué horas se paga más, y qué parte es online? (hora de Madrid) | Operaciones y producto digital |
+| **P3** | ¿Qué tarjetas han pagado en dos o más países distintos el mismo día? | Equipo de fraude |
 
-## Documentación
+Los datos son simulados y reproducibles (misma semilla → mismos datos). Incluyen a propósito
+**anomalías** (importes negativos, comercio inexistente, fechas futuras, campos vacíos,
+valores no permitidos), **duplicados** y **tarjetas sospechosas**, para comprobar que el
+sistema las trata bien. El detalle está en el [contrato de datos](docs/contrato_datos.md).
 
-- [Contrato de datos](docs/contrato_datos.md): campos, tipos, unidades, reglas y anomalías.
-- [Decisiones](docs/decisiones.md): qué se decidió y por qué.
-- [Muestra de referencia](tests/muestra/README.md): 27 mensajes con sus resultados esperados.
-- [Pruebas](docs/pruebas.md): qué se prueba, cómo y resultados.
+## 2. Cómo funciona
 
-## Estructura del repositorio
+1. **Simulador** (`simulator/simulador.py`): genera los pagos en JSON Lines, con `--seed` y
+   `--n-events`, y un *manifiesto* con todo lo que ha inyectado.
+2. **Productor** (`producer/productor.py`): publica cada pago en el topic `card-payments`
+   (3 particiones) con **`card_id` como clave**. Así todos los pagos de una tarjeta van a la
+   misma partición y Kafka mantiene su orden, que es lo que necesita la detección de fraude.
+3. **Archivador** (`consumer/archivador.py`): consumidor del grupo `archivador-hdfs`. Junta
+   lotes (500 mensajes o 5 s), los escribe en HDFS y **solo después confirma el offset** en
+   Kafka. Si muere entre medias, relee: puede repetir, pero nunca pierde (*at-least-once*).
+   Cada fila guarda su partición, su offset y la hora de archivo, y cada fichero lleva su
+   rango de offsets en el nombre:
+   `/pagos/raw/card-payments/dt=2026-11-04/part-1-0000000000-0000000012.jsonl`.
+4. **Hive**: la tabla `pagos_raw` lee esos JSON. La vista `v_pagos_validados` deduplica por
+   `tx_id`, aplica las reglas R1-R5 y pasa de UTC a hora de Madrid. `02_limpiar.sql` vuelca
+   los pagos válidos a **`pagos_limpios` (Parquet, particionada por día)** y los rechazados a
+   `pagos_cuarentena`, con su motivo.
+5. **Consultas** (`hive/consultas/`): P1, P2 y P3 sobre `pagos_limpios`.
+6. **Comprobación**: `tests/calcular_esperado.py` calcula P1-P3 en Python puro con el mismo
+   fichero de eventos, y `scripts/comparar_con_esperado.py` compara celda a celda.
+
+Cuándo se guarda cada dato y cuándo se confirma el progreso en Kafka:
+[docs/limitaciones.md](docs/limitaciones.md#cuándo-se-guarda-cada-dato-y-cuándo-se-confirma-el-progreso).
+Todas las decisiones, con su porqué: [docs/decisiones.md](docs/decisiones.md).
+
+### Qué se cuenta en cada paso (con la muestra de referencia)
+
+| Paso | Qué se cuenta | Unidad | Muestra |
+|---|---|---|---|
+| Simulador | pagos distintos y mensajes enviados | eventos | 24 pagos, 27 mensajes (3 duplicados) |
+| Kafka | mensajes por partición (offset final) | mensajes | 27 (p. ej. 10 + 13 + 4) |
+| HDFS raw / `pagos_raw` | filas archivadas, relecturas incluidas | filas = mensajes | 27 |
+| `v_pagos_validados` | pagos distintos por `tx_id` | pagos | 24 |
+| `pagos_limpios` / `pagos_cuarentena` | pagos válidos / rechazados por regla | pagos | 19 / 5 (uno por regla) |
+| P1 | pagos aprobados, importe total y ticket medio | nº y € (`DECIMAL(10,2)`) | 26/10 ALIMENTACION: 2 pagos, 35,95 €, 17,98 € |
+| P2 | intentos válidos por hora de Madrid y % online | nº y % (1 decimal) | 20 h: 2 pagos, 100,0 % online |
+| P3 | países distintos por tarjeta y día de Madrid | nº de países y de pagos | CARD-000002, 27/10: 2 países (ES, GB), 5 pagos |
+
+Los importes son siempre `DECIMAL`, nunca `float`; los instantes se guardan en **UTC** y se
+convierten a hora de Madrid solo para el día y la hora de negocio.
+
+## 3. Arrancar y comprobar el sistema
+
+**Requisitos:** Docker Desktop con al menos **6 GB** de memoria (Settings → Resources) y una
+terminal con `bash` (macOS, Linux o Git Bash en Windows). Si tienes el laboratorio de clase
+arrancado, páralo antes: usa los mismos puertos.
+
+### 3.1 Primera vez (≈ 10 min, sobre todo descargas)
+
+```bash
+git clone https://github.com/mmartinezvaras/bigdata-pagos-tarjeta.git
+cd bigdata-pagos-tarjeta
+chmod +x pagos
+./pagos up                    # construye las imágenes y arranca los servicios
+./pagos ready                 # espera a HDFS, Kafka y Hive
+./pagos init                  # topic card-payments (3 particiones) y carpetas en HDFS
+./pagos check                 # prueba de humo: Python ↔ HDFS ↔ Kafka
+./pagos subir-ref             # catálogo de comercios → /pagos/ref/comercios
+./pagos hivef 01_tablas.sql   # base de datos pagos, tablas y vista
+```
+
+`./pagos check` debe terminar con `Entorno listo: Python ↔ HDFS ↔ Kafka funcionan.` y
+`01_tablas.sql` con la lista de las 5 tablas.
+
+### 3.2 Recorrido completo con la muestra de referencia (≈ 4 min)
+
+```bash
+./pagos reset-todo            # sistema vacío
+./pagos demo                  # recorrido guiado, con pausas (Enter para avanzar)
+```
+
+La demo publica la muestra de 27 pagos, la archiva, **para el archivador** mientras llegan
+27 mensajes más (la muestra reenviada: todo duplicados), lo recupera y termina en Hive con:
 
 ```
-simulator/   generador de eventos (semilla y volumen configurables)
-producer/    publicación en Kafka
-consumer/    lectura de Kafka y archivo en HDFS
-hive/        DDL de tablas y consultas de negocio
-tests/       muestra de referencia y comprobaciones
-evidencias/  salidas guardadas de las pruebas
-scripts/     utilidades (prueba de humo del entorno)
-docker/      imágenes y configuración de Hadoop, Hive y Python
-docs/        contrato, decisiones, diagrama
+HIVE DA EXACTAMENTE LO ESPERADO
+RESULTADO DE LA DEMO: OK
 ```
 
-## Arranque del entorno
+El mismo recorrido, paso a paso:
 
-Requisitos: Docker Desktop con al menos **6 GB de memoria** asignados (Settings → Resources).
+```bash
+./pagos reset-todo
+./pagos py producer/productor.py tests/muestra/eventos.jsonl
+./pagos archivador start && sleep 15 && ./pagos lag    # LAG = 0 en las 3 particiones
+./pagos verificar                                      # no falta nada de Kafka en HDFS
+./pagos hivef 02_limpiar.sql
+./pagos consultas                                      # P1, P2, P3 → evidencias/hive/
+./pagos py scripts/comparar_con_esperado.py            # contra tests/muestra/esperado
+```
 
-Si tienes el laboratorio de clase arrancado, páralo antes (usa los mismos puertos):
+### 3.3 Pruebas
 
-    cd ../LABORATORIO_ALUMNOS_HDFS && docker compose stop && cd -
+Cada una parte de cero, explica sus pasos y guarda su registro en `evidencias/pruebas/`:
 
-Desde la carpeta del proyecto:
+```bash
+./pagos prueba relectura      # el archivador muere tras escribir y antes del commit (≈ 3 min)
+./pagos prueba caida          # se mata el archivador mientras llegan pagos (≈ 4 min)
+./pagos prueba volumen        # 100.000 pagos (≈ 5 min) · o: ./pagos prueba volumen 20000
+```
 
-    chmod +x pagos
-    ./pagos up       # construye imágenes y arranca (la primera vez tarda varios minutos)
-    ./pagos ready    # espera a HDFS, Kafka y Hive
-    ./pagos init     # crea el topic card-payments (3 particiones) y /pagos en HDFS
-    ./pagos check    # prueba de humo: Python escribe en HDFS y publica/lee en Kafka
+| Prueba | Resultado |
+|---|---|
+| Muestra de referencia (27 mensajes) | Hive = resultados calculados a mano |
+| Dato incorrecto | Cada anomalía, en cuarentena con su regla (1 por regla en la muestra) |
+| Relectura (muere antes del commit) | 0 perdidos, 1 fila releída, eliminada al deduplicar |
+| Caída (SIGKILL con tráfico) | LAG 169 → 1.727 con el archivador muerto → 0 en 6 s al volver, 0 perdidos |
+| Volumen (102.000 mensajes) | Kafka → HDFS en 139 s, Hive en 39 s, 0 perdidos, resultados = esperados |
 
-Resultado esperado de `./pagos check`:
+Detalle y lectura de las cifras: [docs/pruebas.md](docs/pruebas.md).
 
-    [OK] HDFS: escrito, leído y borrado /tmp/smoke_xxxxxxxx.txt
-    [OK] Kafka: mensaje publicado y leído (partición 0, offset N)
-    Entorno listo: Python ↔ HDFS ↔ Kafka funcionan.
+### 3.4 Parar
+
+```bash
+./pagos stop                  # para todo CONSERVANDO los datos
+```
+
+No uses `docker compose down -v`: borra los volúmenes (HDFS, Kafka y el catálogo de Hive).
+
+## 4. Referencia de comandos
+
+| Comando | Qué hace |
+|---|---|
+| `./pagos up` · `ready` · `stop` | arrancar, esperar a que esté listo, parar |
+| `./pagos init` · `check` · `subir-ref` | preparar topic y HDFS, prueba de humo, subir catálogo |
+| `./pagos py <script.py> ...` | ejecutar Python en el contenedor `app` |
+| `./pagos archivador start \| stop \| kill \| logs` | controlar el archivador (`kill` = muerte en seco) |
+| `./pagos lag` | offsets confirmados, final del log y LAG por partición |
+| `./pagos raw` · `verificar` | ficheros en raw · ¿está en HDFS todo lo de Kafka? |
+| `./pagos hivef <fichero.sql>` · `hive "SQL;"` | ejecutar SQL en Hive |
+| `./pagos consultas [carpeta]` | P1, P2, P3, control y cuarentena → TSV |
+| `./pagos reset-topic` · `reset-todo` | vaciar el topic · vaciar todo para repetir una prueba |
+| `./pagos demo` · `prueba <nombre>` | demo de la defensa · pruebas de la fase 6 |
+| `./pagos kafka <script> ...` · `hdfs ...` | herramientas de Kafka y HDFS directamente |
+
+Simulador: `./pagos py simulator/simulador.py --help` (`--seed`, `--n-events`, `--n-cards`,
+`--start`, `--days`, `--anomaly-rate`, `--dup-rate`, `--n-suspicious`, `--out`, `--manifest`).
 
 Interfaces web: NameNode en http://localhost:9870 · HiveServer2 en http://localhost:10002.
+Hive también se puede consultar desde DBeaver (Apache Hive, controlador Hive 4+,
+`localhost:10000`, base `default`, usuario `root`, sin contraseña).
 
-Para parar **sin perder datos**: `./pagos stop`. No uses `docker compose down -v`: borra los
-volúmenes (HDFS, Kafka y el catálogo de Hive).
+### Servicios y tablas
 
-## Simulador
-
-    ./pagos py simulator/simulador.py --seed 42 --n-events 1000 \
-        --out data/eventos.jsonl --manifest data/manifiesto.json
-    ./pagos py tests/test_simulador.py          # comprobaciones (deben salir todas OK)
-    ./pagos py tests/calcular_esperado.py data/eventos.jsonl --out data/esperado
-
-Opciones: `--n-cards`, `--start AAAA-MM-DD`, `--days`, `--anomaly-rate`, `--dup-rate`,
-`--n-suspicious`. Ayuda completa con `--help`.
-
-## Productor
-
-    ./pagos py producer/productor.py tests/muestra/eventos.jsonl          # publica la muestra
-    ./pagos py producer/productor.py data/eventos.jsonl --rate 50         # 50 pagos/segundo
-    ./pagos kafka kafka-get-offsets --topic card-payments                 # mensajes por partición
-
-Publica en `card-payments` con `card_id` como clave. Al terminar enseña cuántos mensajes
-fueron a cada partición y comprueba que ninguna tarjeta se repartió entre varias.
-
-## Archivador (Kafka → HDFS)
-
-    ./pagos archivador start      # arranca el consumidor como servicio
-    ./pagos archivador logs       # ver qué hace (Ctrl-C para salir de los logs)
-    ./pagos lag                   # offsets confirmados y LAG por partición
-    ./pagos raw                   # ficheros en /pagos/raw
-    ./pagos verificar             # comprueba que no falta nada de Kafka en HDFS
-    ./pagos archivador stop       # parada ordenada  ·  kill = muerte en seco
-
-## Hive
-
-    ./pagos subir-ref                    # catálogo de comercios → /pagos/ref/comercios
-    ./pagos hivef 01_tablas.sql          # crea la base pagos, tablas y vista (una vez)
-    ./pagos hivef 02_limpiar.sql         # registra raw y reconstruye limpios y cuarentena
-    ./pagos consultas                    # P1, P2, P3 y control → evidencias/hive/*.tsv
-    ./pagos py scripts/comparar_con_esperado.py   # compara con tests/muestra/esperado
+| Servicio | Imagen | Para qué |
+|---|---|---|
+| `namenode`, `dn1`, `dn2` | Hadoop 3.4.2 (imagen del laboratorio) | HDFS, replicación 2 |
+| `kafka` | `apache/kafka:3.9.1` (KRaft, 1 broker) | transporte de los eventos |
+| `hiveserver2` | `apache/hive:4.1.0` (configuración de la clase 08) | tablas y consultas SQL |
+| `app` | Python 3.12 + `confluent-kafka` + `hdfs` | simulador, productor, pruebas |
+| `archivador` | la misma imagen que `app` | consumidor Kafka → HDFS (se arranca aparte) |
 
 | Tabla | Formato | Contenido |
 |---|---|---|
 | `pagos.pagos_raw` | JSON, partición `dt` (día de archivo) | todo lo que llegó, tal cual |
 | `pagos.comercios` | CSV | catálogo de comercios |
 | `pagos.v_pagos_validados` | vista | deduplicación + reglas + hora de Madrid |
-| `pagos.pagos_limpios` | Parquet, partición `fecha` (día Madrid) | pagos válidos |
-| `pagos.pagos_cuarentena` | Parquet | pagos rechazados con su `regla` |
+| `pagos.pagos_limpios` | Parquet + Snappy, partición `fecha` (día de Madrid) | pagos válidos |
+| `pagos.pagos_cuarentena` | Parquet + Snappy | pagos rechazados con su `regla` |
 
-## Pruebas
+## 5. Estructura del repositorio
 
-    ./pagos prueba relectura      # el archivador muere antes del commit y relee
-    ./pagos prueba caida          # se mata el archivador mientras llegan pagos
-    ./pagos prueba volumen        # 100.000 pagos (o ./pagos prueba volumen 20000)
+```
+pagos            atajos para manejar el sistema (./pagos sin argumentos muestra la ayuda)
+compose.yaml     todos los servicios
+docker/          imágenes y configuración de Hadoop, Hive y Python
+simulator/       simulador y catálogo de comercios
+producer/        productor Kafka
+consumer/        archivador Kafka → HDFS
+hive/            DDL, limpieza, reset y consultas (hive/consultas/)
+tests/           oráculo, tests del simulador y muestra de referencia (tests/muestra/)
+scripts/         prueba de humo, verificación, comparación, pruebas y demo
+evidencias/      salidas guardadas: Kafka, HDFS, Hive y registros de las pruebas
+docs/            contrato, decisiones, pruebas, limitaciones, defensa y diagrama
+```
 
-Cada una parte de cero (`./pagos reset-todo`) y deja su registro en `evidencias/pruebas/`.
+## 6. Documentación
 
-| Prueba | Resultado |
-|---|---|
-| Muestra de referencia (27 mensajes) | Hive = resultados calculados a mano |
-| Relectura (muere antes del commit) | 0 perdidos, 1 fila releída, eliminada al deduplicar |
-| Caída (SIGKILL con tráfico) | LAG 169 → 1.727 con el archivador muerto → 0 en 6 s al volver, 0 perdidos |
-| Volumen (102.000 mensajes) | Kafka → HDFS en 139 s, Hive en 39 s, 0 perdidos, resultados = esperados |
+- [Contrato de datos](docs/contrato_datos.md): campos, tipos, unidades, reglas y anomalías.
+- [Muestra de referencia](tests/muestra/README.md): los 27 mensajes y sus resultados esperados, comprobables a mano.
+- [Decisiones](docs/decisiones.md): qué se decidió, por qué y qué se descartó (D1-D25).
+- [Pruebas](docs/pruebas.md): qué demuestra cada prueba, resultados y lectura de las cifras.
+- [Garantías y limitaciones](docs/limitaciones.md): cuándo se guarda y se confirma cada dato, y qué no cubre el sistema.
+- [Guía de defensa](docs/defensa.md): guion, demo, preguntas y cambios en directo.
+- [Presentación de la defensa](docs/presentacion.pdf) (8 diapositivas: caso, arquitectura, datos, decisiones, pruebas, demo y límites).
+- [Diagrama](docs/arquitectura.mmd) (fuente Mermaid) · [imagen](docs/arquitectura.png).
 
-Detalle en [docs/pruebas.md](docs/pruebas.md).
+## 7. Fuentes y material reutilizado
 
-## Servicios
+- **Imagen y configuración de Hadoop/HDFS** (`docker/hadoop/`): laboratorio de la asignatura
+  (`LABORATORIO_ALUMNOS_HDFS`), con 2 DataNodes en lugar de 3.
+- **Imagen y configuración de Hive** (`docker/hive/hive-site.xml`, servicio `hiveserver2`):
+  material de la clase 08, cambiando las rutas del warehouse a `/pagos`.
+- **Patrón de tablas externas, particiones y Parquet** en Hive: práctica de la clase 09.
+- Imágenes públicas `apache/kafka:3.9.1`, `apache/hive:4.1.0`, `eclipse-temurin:11-jre-jammy`
+  y `python:3.12-slim`. Librerías Python `confluent-kafka` y `hdfs`.
 
-| Servicio | Imagen | Para qué |
-|---|---|---|
-| `namenode`, `dn1`, `dn2` | Hadoop 3.4.2 (imagen del laboratorio) | HDFS: almacenamiento de los eventos |
-| `kafka` | `apache/kafka:3.9.1` (KRaft, 1 broker) | Transporte de los eventos |
-| `hiveserver2` | `apache/hive:4.1.0` (imagen de la clase 08) | Tablas y consultas SQL |
-| `app` | Python 3.12 + `confluent-kafka` + `hdfs` | Simulador, productor y consumidor |
+## 8. Versión entregada
 
-La imagen de Hadoop y la configuración de Hive se reutilizan de los materiales de la asignatura
-(laboratorio HDFS y clase 08), adaptando las rutas.
+La versión entregada está marcada en git con la etiqueta **`v1.0`**. Cualquier cambio
+posterior a la entrega se anotará aquí, con su motivo.

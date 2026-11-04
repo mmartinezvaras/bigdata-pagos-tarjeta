@@ -1,0 +1,19 @@
+flowchart TB
+  subgraph ING["Ingesta: del pago al almacén"]
+    direction LR
+    S["Simulador<br/>semilla + volumen<br/>+ anomalías"] -->|JSON Lines| P["Productor<br/>clave = card_id<br/>acks = all"]
+    P --> K[("Kafka<br/>card-payments<br/>3 particiones")]
+    K -->|grupo archivador-hdfs| A["Archivador<br/>lotes de 500 o 5 s"]
+    A -->|"1º escribe el lote"| R[("HDFS raw · JSON<br/>dt = día de llegada<br/>+ partición y offset")]
+    A -.->|"2º commit del offset"| K
+  end
+  subgraph CON["Consulta: del almacén a las respuestas"]
+    direction LR
+    F[("HDFS ref<br/>comercios")] --> V["Hive · vista<br/>dedup por tx_id<br/>reglas R1-R5<br/>UTC → Madrid"]
+    V -->|válidos| L[("pagos_limpios<br/>Parquet<br/>partición fecha")]
+    V -->|"rechazados + regla"| Q[("pagos_cuarentena<br/>Parquet")]
+    L --> C["P1 · P2 · P3"]
+    C --> X{"¿= esperado?"}
+    O["Oráculo Python<br/>mismo fichero"] -.-> X
+  end
+  R --> V

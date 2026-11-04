@@ -124,6 +124,11 @@ case "${1:-}" in
     echo "· particiones de Hive sincronizadas: sistema vacío"
     ;;
 
+  demo)
+    # Demo guiada de la defensa (≈ 4 min). Antes: ./pagos reset-todo
+    exec bash scripts/demo.sh
+    ;;
+
   prueba)
     # Pruebas de la fase 6: ./pagos prueba relectura | caida | volumen [N]
     nombre="${2:-}"
@@ -201,7 +206,7 @@ Uso: ./pagos <orden>
   reset-topic  vaciar el topic card-payments (borrar y crear de nuevo)
   archivador start|stop|kill|logs    lag    raw    verificar
   subir-ref    consultas [carpeta]    reset-todo (vaciar todo para repetir pruebas)
-  prueba relectura | caida | volumen [N]
+  prueba relectura | caida | volumen [N]    demo (defensa, tras reset-todo)
   check    prueba de humo Python↔HDFS↔Kafka
   hdfs ... | kafka <script> ... | hive "SQL;" | hivef fichero.sql | py script.py ...
 EOF
