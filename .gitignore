@@ -8,3 +8,5 @@ __pycache__/
 data/
 volumes/
 *.parquet
+# salidas que genera el panel al usarlo
+evidencias/panel/

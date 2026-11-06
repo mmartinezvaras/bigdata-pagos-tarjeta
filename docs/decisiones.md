@@ -299,6 +299,32 @@ Problemas reales que aparecieron al ejecutar la Fase 5 y cómo se resolvieron:
 - **Cómo lo cuento:** *"Las pruebas son scripts: las repito cuando quiera y el resultado lo
   da una comparación, no mi opinión."*
 
+## D26 · Un panel visual que es una ventana, no un atajo
+
+- **Qué:** `./pagos panel` levanta una web (Streamlit, `localhost:8501`) con tres pestañas:
+  *En directo* (mensajes y LAG por partición, gráfica del LAG, ficheros en HDFS, estado del
+  archivador), *Respuestas de Hive* (P1-P3 en gráficos, cuarentena y si coinciden con lo
+  esperado) y *Cómo funciona*. Botones para publicar, matar/arrancar el archivador, lanzar
+  Hive y vaciar el sistema.
+- **Por qué así:** el panel **no calcula nada por su cuenta**. Publica con el mismo
+  `productor.py`, consulta Hive con los mismos `.sql` (ejecutados con beeline dentro del
+  contenedor de Hive) y compara con el mismo oráculo y el mismo comparador. Si el panel
+  sumara los importes él mismo, se saltaría el recorrido Kafka → HDFS → Hive que se evalúa.
+- **Un observador para todos:** un hilo hace una foto del sistema cada 2 s y las pantallas
+  solo la dibujan. Las acciones largas van en otro hilo, de una en una.
+- **Socket de Docker:** para matar y arrancar el archivador, el panel monta
+  `/var/run/docker.sock`. Quien controla ese socket controla Docker entero, así que solo es
+  aceptable en local; por eso el panel tiene su propio perfil y no arranca con `./pagos up`.
+- **Qué compara:** lo publicado **desde el panel** después de vaciar. Si se publica por otro
+  lado, el panel lo avisa en lugar de dar un OK falso.
+- **Aspecto** (`panel/estilo.py`), con los criterios de la skill `emil-design-eng` de Emil
+  Kowalski: lo que se refresca cada 2 s no se anima (sin parpadeos); cifras con
+  `tabular-nums` y tarjetas de tamaño fijo, para que nada se mueva al llegar datos; botones con
+  `scale(0.97)` al pulsar (ease-out, < 160 ms) y objetivos de 44 px; el color nunca va solo,
+  cada estado lleva su palabra. Misma tipografía y paleta que la presentación.
+- **Cómo lo cuento:** *"El panel enseña el sistema; no lo sustituye. Las cifras que ves son
+  las que responde Hive."*
+
 ---
 
 Las garantías y limitaciones del sistema están en [limitaciones.md](limitaciones.md).

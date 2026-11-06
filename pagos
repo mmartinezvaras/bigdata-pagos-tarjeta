@@ -56,7 +56,7 @@ case "${1:-}" in
 
   stop)
     # Para los contenedores CONSERVANDO los datos (volúmenes).
-    dc --profile pipeline stop
+    dc --profile pipeline --profile panel stop
     ;;
 
   ready)
@@ -121,7 +121,22 @@ case "${1:-}" in
       /pagos/curated/pagos_limpios /pagos/curated/pagos_cuarentena 2> >(sin_ruido) | limpio
     echo "· HDFS raw y curated vaciados"
     hive_fichero 00_reset.sql
+    rm -f data/panel/publicado.jsonl; rm -rf evidencias/panel    # el panel olvida lo publicado
     echo "· particiones de Hive sincronizadas: sistema vacío"
+    ;;
+
+  panel)
+    # Panel visual: ./pagos panel [start|stop|logs]  →  http://localhost:8501
+    case "${2:-start}" in
+      start)
+        dc --profile pipeline up --no-start archivador   # que exista, para poder arrancarlo desde la web
+        dc --profile panel up -d --build panel
+        echo "Panel en http://localhost:8501 (la primera vez tarda en construir la imagen)"
+        ;;
+      stop) dc --profile panel stop panel ;;
+      logs) dc --profile panel logs -f panel ;;
+      *) echo 'Uso: ./pagos panel [start|stop|logs]' >&2; exit 2 ;;
+    esac
     ;;
 
   demo)
@@ -207,6 +222,7 @@ Uso: ./pagos <orden>
   archivador start|stop|kill|logs    lag    raw    verificar
   subir-ref    consultas [carpeta]    reset-todo (vaciar todo para repetir pruebas)
   prueba relectura | caida | volumen [N]    demo (defensa, tras reset-todo)
+  panel [start|stop|logs]    panel visual en http://localhost:8501
   check    prueba de humo Python↔HDFS↔Kafka
   hdfs ... | kafka <script> ... | hive "SQL;" | hivef fichero.sql | py script.py ...
 EOF

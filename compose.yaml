@@ -120,6 +120,30 @@ services:
     command: ["python", "consumer/archivador.py"]
     stop_grace_period: 30s                    # tiempo para terminar el lote al pararlo
 
+  # ---------- Panel visual (Streamlit) ----------
+  # No arranca con "./pagos up": ./pagos panel → http://localhost:8501
+  # Monta el socket de Docker para poder matar y arrancar el archivador desde la web
+  # (solo en local: quien controla ese socket controla Docker).
+  panel:
+    build: ./docker/panel
+    image: pagos-panel:1
+    hostname: panel
+    mem_limit: 768m
+    profiles: [panel]
+    depends_on: [kafka, namenode]
+    ports: ["127.0.0.1:8501:8501"]
+    environment:
+      KAFKA_BOOTSTRAP: kafka:9092
+      HDFS_URL: http://namenode:9870
+      HDFS_USER: root
+      PROYECTO_DIR: /proyecto
+      COMPOSE_PROJECT: pagos
+    volumes:
+      - ./:/proyecto
+      - /var/run/docker.sock:/var/run/docker.sock
+    working_dir: /proyecto/panel
+    command: ["streamlit", "run", "app.py"]
+
 volumes:
   nn:
   dn1:

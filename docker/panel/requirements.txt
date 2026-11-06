@@ -1,0 +1,5 @@
+streamlit==1.41.1
+altair==5.5.0
+confluent-kafka>=2.6,<3
+hdfs==2.7.3
+docker==7.1.0

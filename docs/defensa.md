@@ -15,6 +15,7 @@
 - [ ] Terminal con letra grande (⌘ +) y ventana a pantalla completa.
 - [ ] Abiertos: la presentación, `docs/decisiones.md`, `docs/pruebas.md` y la carpeta `evidencias/`.
 - [ ] DBeaver conectado a Hive (por si piden una consulta nueva).
+- [ ] Si usas el panel: `./pagos panel` y la web abierta en `http://localhost:8501`.
 - [ ] Vídeo de respaldo de la demo a mano (ver al final).
 
 ---
@@ -38,7 +39,23 @@
 > valida; los buenos van a Parquet particionado por día y los malos a cuarentena con su
 > motivo. Al final un script compara Hive con un cálculo independiente en Python."
 
-## 2. Demostración (4 min) · qué decir en cada pausa
+## 2. Demostración (4 min)
+
+**Opción visual: el panel** (`./pagos panel`, en `http://localhost:8501`, con el sistema
+vaciado antes). Mismo recorrido que `./pagos demo`, con botones:
+
+1. ▶️ arrancar el archivador → 📤 publicar la muestra. *"Mirad las 3 particiones: 10, 13 y 4
+   mensajes, y el archivador las confirma; LAG 0."* Enseñar los ficheros de HDFS con su rango
+   de offsets en el nombre.
+2. 💀 matar → 📤 publicar otra vez. *"El LAG sube a 27: Kafka guarda los mensajes aunque
+   nadie los lea."* Señalar la gráfica.
+3. ▶️ arrancar. *"Sigue desde su último commit: LAG 0 otra vez."*
+4. 🧮 limpiar en Hive y responder (≈ 1 min: mientras, explicar la vista y la cuarentena).
+   Pestaña *Respuestas*: 54 filas → 24 pagos → 19 válidos, los gráficos de P1-P3 y el ✅.
+
+**Plan B: la terminal**, con `./pagos demo`. Si el panel falla, se cambia sin perder tiempo.
+
+### Terminal · qué decir en cada pausa
 
 `./pagos demo`. Avanza con Enter.
 

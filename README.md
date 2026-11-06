@@ -143,7 +143,23 @@ Cada una parte de cero, explica sus pasos y guarda su registro en `evidencias/pr
 
 Detalle y lectura de las cifras: [docs/pruebas.md](docs/pruebas.md).
 
-### 3.4 Parar
+### 3.4 Panel visual (opcional)
+
+```bash
+./pagos panel                 # → http://localhost:8501   ·   ./pagos panel stop para pararlo
+```
+
+Una web que enseña el sistema en directo: mensajes y **LAG por partición** (con su gráfica),
+ficheros que van llegando a HDFS y estado del archivador. Tiene botones para publicar la
+muestra o más pagos, **matar y arrancar el archivador**, lanzar Hive y vaciar el sistema. La
+pestaña *Respuestas de Hive* dibuja P1, P2, P3 y la cuarentena, y dice si coinciden con lo
+esperado. No calcula nada por su cuenta: usa el productor, los `.sql` de Hive y el comparador
+de siempre (decisión D26). Necesita unos 700 MB más de memoria.
+
+Prueba de caída en el panel: 🧹 vaciar → ▶️ arrancar → 📤 publicar la muestra → 💀 matar →
+📤 publicar otra vez (el LAG sube a 27) → ▶️ arrancar (vuelve a 0) → 🧮 responder → ✅.
+
+### 3.5 Parar
 
 ```bash
 ./pagos stop                  # para todo CONSERVANDO los datos
@@ -165,6 +181,7 @@ No uses `docker compose down -v`: borra los volúmenes (HDFS, Kafka y el catálo
 | `./pagos consultas [carpeta]` | P1, P2, P3, control y cuarentena → TSV |
 | `./pagos reset-topic` · `reset-todo` | vaciar el topic · vaciar todo para repetir una prueba |
 | `./pagos demo` · `prueba <nombre>` | demo de la defensa · pruebas de la fase 6 |
+| `./pagos panel [start \| stop \| logs]` | panel visual en http://localhost:8501 |
 | `./pagos kafka <script> ...` · `hdfs ...` | herramientas de Kafka y HDFS directamente |
 
 Simulador: `./pagos py simulator/simulador.py --help` (`--seed`, `--n-events`, `--n-cards`,
@@ -183,6 +200,7 @@ Hive también se puede consultar desde DBeaver (Apache Hive, controlador Hive 4+
 | `hiveserver2` | `apache/hive:4.1.0` (configuración de la clase 08) | tablas y consultas SQL |
 | `app` | Python 3.12 + `confluent-kafka` + `hdfs` | simulador, productor, pruebas |
 | `archivador` | la misma imagen que `app` | consumidor Kafka → HDFS (se arranca aparte) |
+| `panel` | Python 3.12 + Streamlit | panel visual (opcional, `./pagos panel`) |
 
 | Tabla | Formato | Contenido |
 |---|---|---|
@@ -200,6 +218,7 @@ compose.yaml     todos los servicios
 docker/          imágenes y configuración de Hadoop, Hive y Python
 simulator/       simulador y catálogo de comercios
 producer/        productor Kafka
+panel/           panel visual (Streamlit): app.py dibuja, sistema.py observa y actúa
 consumer/        archivador Kafka → HDFS
 hive/            DDL, limpieza, reset y consultas (hive/consultas/)
 tests/           oráculo, tests del simulador y muestra de referencia (tests/muestra/)
@@ -212,7 +231,7 @@ docs/            contrato, decisiones, pruebas, limitaciones, defensa y diagrama
 
 - [Contrato de datos](docs/contrato_datos.md): campos, tipos, unidades, reglas y anomalías.
 - [Muestra de referencia](tests/muestra/README.md): los 27 mensajes y sus resultados esperados, comprobables a mano.
-- [Decisiones](docs/decisiones.md): qué se decidió, por qué y qué se descartó (D1-D25).
+- [Decisiones](docs/decisiones.md): qué se decidió, por qué y qué se descartó (D1-D26).
 - [Pruebas](docs/pruebas.md): qué demuestra cada prueba, resultados y lectura de las cifras.
 - [Garantías y limitaciones](docs/limitaciones.md): cuándo se guarda y se confirma cada dato, y qué no cubre el sistema.
 - [Guía de defensa](docs/defensa.md): guion, demo, preguntas y cambios en directo.
